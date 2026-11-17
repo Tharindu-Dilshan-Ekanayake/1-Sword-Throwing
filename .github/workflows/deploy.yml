@@ -110,7 +110,7 @@ jobs:
 
       - name: Build and push the server image
         run: |
-          docker build -f server/Dockerfile -t "${{ steps.meta.outputs.image }}" .
+          docker build -f server/Dockerfile             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}"             -t "${{ steps.meta.outputs.image }}" .
           docker push "${{ steps.meta.outputs.image }}"
 
       - name: Roll it out on Legion
