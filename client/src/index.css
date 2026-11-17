@@ -40,7 +40,12 @@
   right: 14px;
   bottom: 14px;
 }
-/* Over the jump button, under the same thumb. */
+/* The sword (slash) button, right beside the jump button, under the same thumb. */
+.touch-bat {
+  right: 96px;
+  bottom: 8px;
+}
+/* Template leftover (nothing uses it now). */
 .touch-throw {
   right: 1px;
   bottom: 100px;
@@ -69,6 +74,9 @@
   }
   .touch-jump {
     bottom: calc(14px + var(--px) * 300);
+  }
+  .touch-bat {
+    bottom: calc(8px + var(--px) * 300);
   }
   .touch-throw {
     bottom: calc(100px + var(--px) * 300);

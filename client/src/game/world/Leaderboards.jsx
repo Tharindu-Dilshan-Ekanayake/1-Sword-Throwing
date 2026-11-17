@@ -31,8 +31,8 @@ function drawBoards(ctx, w, h, leaderboards, profile) {
     const x0 = i * colW
     const pad = colW * 0.03
     const grad = ctx.createLinearGradient(0, 0, 0, h)
-    grad.addColorStop(0, '#16304a')
-    grad.addColorStop(1, '#0c1828')
+    grad.addColorStop(0, '#1d2a5c')
+    grad.addColorStop(1, '#101634')
     ctx.fillStyle = grad
     ctx.fillRect(x0 + pad, pad, colW - pad * 2, h - pad * 2)
 
@@ -74,7 +74,7 @@ function drawBoards(ctx, w, h, leaderboards, profile) {
 }
 
 /**
- * The four leaderboards behind the egg plaza. Frames are blocks; all four faces are
+ * The four leaderboards flanking the spawn gate. Frames are blocks; all four faces are
  * one quad mesh on one canvas texture, redrawn when the boards update (once a minute).
  */
 export function Leaderboards() {
@@ -117,8 +117,8 @@ export function Leaderboards() {
 
     const frames = new BlockSet()
     for (const b of LEADERBOARDS) {
-      frames.addOn(b.x, 0, b.z, BOARD_W + 0.8, BOARD_BOTTOM + BOARD_H + 0.6, 0.9, '#16233f')
-      frames.addOn(b.x, BOARD_BOTTOM + BOARD_H + 0.6, b.z, BOARD_W + 1.2, 0.6, 1.1, '#2fc6ff', STYLE.GLOW)
+      frames.addOn(b.x, 0, b.z, BOARD_W + 0.8, BOARD_BOTTOM + BOARD_H + 0.6, 0.9, '#2f3f8a')
+      frames.addOn(b.x, BOARD_BOTTOM + BOARD_H + 0.6, b.z, BOARD_W + 1.2, 0.6, 1.1, '#ffd21f', STYLE.GLOW)
     }
     return { canvas, texture, geometry, material, frames: frames.build(sharedMaterials().blocks) }
   }, [])

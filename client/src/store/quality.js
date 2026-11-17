@@ -35,7 +35,9 @@ export const PRESETS = {
      * monitor lowers the resolution (RENDER_SCALES) rather than taking avatars away.
      */
     remoteDrawDistance: 150,
-    remoteAvatars: 7,
+    // Four on LOW (the rest drawn as the cheap blocky figures): a full room's real
+    // avatars on top of the lobby would break a phone's 100k-triangle budget.
+    remoteAvatars: 4,
     remoteAvatarDistance: 150,
     remoteNameDistance: 40,
     /** World labels fade out past this. */

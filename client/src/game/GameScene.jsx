@@ -14,6 +14,8 @@ import GainFX from './fx/GainFX'
 import WorldLabels from './labels/WorldLabels'
 import { prepareAudio } from '../audio/sfx'
 import { queueAllPetIcons } from './pets/petIcons'
+import { queueAllSwordIcons } from './swordIcons'
+import SwordIconBaker from './SwordIconBaker'
 import Pets, { RewardCrab, SphinxShowcase } from './pets/Pets'
 import RemoteAvatars from './remote/RemoteAvatars'
 import RemotePlayers from './remote/RemotePlayers'
@@ -27,9 +29,9 @@ import TutorialArrows from './world/TutorialArrows'
 import Lighting from './Lighting'
 import PerfProbe from './PerfProbe'
 import Player from './Player'
-import PracticeThrows from './PracticeThrows'
-import TossInput from './TossInput'
 import ShaderWarmup from './ShaderWarmup'
+import ChargeFX from './ChargeFX'
+import TrainingDummies from './TrainingDummies'
 import { FOG, SKY } from './sceneStyle'
 import Sky from './Sky'
 import World from './world/World'
@@ -42,9 +44,8 @@ const DevPerf = import.meta.env.DEV
   : null
 const showDevPerf = import.meta.env.DEV && new URLSearchParams(window.location.search).has('perf')
 
-// The drop scene (the hotel, the city below and everything that happens as the phone
-// falls) is its own chunk, fetched once the lobby is on screen so it never delays
-// time-to-playable.
+// The valley road (and the sword's flight) is its own chunk, fetched once the lobby is on
+// screen so it never delays time-to-playable.
 const Roll = lazy(() => import('./roll/Roll'))
 
 /**
@@ -88,15 +89,15 @@ function ViewDistance({ far }) {
 
 /**
  * The camera's vertical field of view for a screen `aspect` wide: 60 degrees on a
- * landscape screen; wider on one held upright, so the lobby and the hotel below still fit
- * across a phone in portrait instead of being cropped to a narrow slit.
+ * landscape screen; wider on one held upright, so the road, the dummies and your throw
+ * still fit across a phone in portrait instead of being cropped to a narrow slit.
  */
 const fovForAspect = (aspect) => (aspect >= 1 ? 60 : Math.min(84, 60 / Math.sqrt(Math.max(0.3, aspect))))
 
 /**
  * Keeps the field of view right for the screen's shape as the phone turns. Left alone
- * while you fly (Roll.jsx animates the lens then, from this as its base), and put
- * right again once the launch is over.
+ * while the sword flies (Roll.jsx animates the lens then, from this as its base), and put
+ * right again once the throw is over.
  */
 function AspectFov() {
   const get = useThree((s) => s.get)
@@ -167,6 +168,9 @@ export function GameScene({ onReady }) {
     // tap that beats it there still builds it (sfx.unlock). Before, both ran behind the
     // loading screen: ~0.9 s of a slow phone's start-up.
     queueAllPetIcons()
+    // The Sword Shop's portraits, a few seconds on (after the pets'), so the shop has them
+    // ready; opening it sooner asks for them straight away.
+    setTimeout(queueAllSwordIcons, 4000)
     if ('requestIdleCallback' in window) requestIdleCallback(prepareAudio, { timeout: 1500 })
     else setTimeout(prepareAudio, 200)
   }, [warmedUp, firstFrame, game, onReady])
@@ -263,11 +267,12 @@ export function GameScene({ onReady }) {
         <SphinxShowcase />
         <RewardCrab />
         <Pets />
+        <SwordIconBaker />
         <RemotePlayers />
         <RemoteAvatars />
         <Player />
-        <PracticeThrows />
-        <TossInput />
+        <TrainingDummies />
+        <ChargeFX />
         <BlobShadows />
         <GainFX />
         {warmedUp && firstFrame && (

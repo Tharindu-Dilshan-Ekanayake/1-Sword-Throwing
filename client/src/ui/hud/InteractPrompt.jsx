@@ -2,9 +2,8 @@ import { useEffect } from 'react'
 
 import { PADS, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
-import { isPadUnlocked } from '@shared/logic'
+import { isPadUnlocked, nextTire } from '@shared/logic'
 
-import { standState } from '../../game/labels/lobbyLabels'
 import { actions } from '../../net/actions'
 import { buy } from '../../net/shop'
 import { useGame } from '../../store/game'
@@ -15,14 +14,15 @@ import { u } from './style'
  * One prompt at a time.
  */
 function usePrompt() {
-  const stand = useGame((s) => s.zone.stand)
+  const atCounter = useGame((s) => s.zone.swordCounter)
   const owned = useGame((s) => s.profile.ownedTires)
-  const equipped = useGame((s) => s.profile.equippedTire)
   const atFreeReward = useGame((s) => s.zone.freeReward)
   const freeTaken = useGame((s) => s.session.freeRewardTaken)
   const padNear = useGame((s) => s.zone.padNear)
   const padLocked = useGame((s) => s.zone.padNear >= 0 && !isPadUnlocked(s.profile, s.zone.padNear))
   const atSphinx = useGame((s) => s.zone.sphinx)
+  const atBallShop = useGame((s) => s.zone.ballShop)
+  const openPanel = useGame((s) => s.openPanel)
   const atPortal = useGame((s) => s.zone.portal)
   const wins = useGame((s) => s.profile.wins)
   const rebirths = useGame((s) => s.profile.rebirths)
@@ -34,7 +34,7 @@ function usePrompt() {
     const world = WORLD_PORTALS[atPortal]
     if (inWorld === 1) return { title: WORLDS[0].name, action: 'Step out and back in to go home', run: null }
     if (unlocked || (rebirths >= world.rebirths && wins >= world.wins)) {
-      return { title: world.name, action: `x${WORLDS[1].wins} Wins on every drop!`, run: null }
+      return { title: world.name, action: `x${WORLDS[1].wins} Wins on every throw!`, run: null }
     }
     if (rebirths < world.rebirths) return { title: world.name, action: `Needs ${world.rebirths} Rebirths (you have ${rebirths})`, run: null }
     return { title: world.name, action: `Needs ${formatNumber(world.wins)} Wins (you have ${formatNumber(wins)})`, run: null }
@@ -46,7 +46,7 @@ function usePrompt() {
 
   if (padLocked) {
     const pad = PADS[padNear]
-    const title = `${pad.name} - ${formatNumber(pad.mult)}x Skill`
+    const title = `${pad.name} - ${formatNumber(pad.mult)}x Power`
     if (pad.product) {
       return { title, action: `Unlock - ${formatNumber(SHOP[pad.product].price)} Wins`, run: () => buy(pad.product) }
     }
@@ -57,20 +57,24 @@ function usePrompt() {
     return { title, action: `Locked: needs ${pad.rebirths} ${word}`, run: null }
   }
 
+  if (atBallShop) {
+    return { title: 'Enchant Altar', action: 'Enchant your sword', run: () => openPanel('balls') }
+  }
+
   if (atFreeReward) {
     return freeTaken
       ? { title: 'Free Reward', action: 'Come back next time!', run: null }
       : { title: 'Free Reward', action: 'Claim', run: () => actions.claimFreeReward() }
   }
 
-  if (stand >= 0) {
-    const tire = TIRES[stand]
-    const title = `${tire.name} - +${formatNumber(tire.power)} Skill`
-    const state = standState({ ownedTires: owned, equippedTire: equipped }, stand)
-    if (state === 'equipped') return { title, action: 'Equipped', run: null }
-    if (state === 'owned') return { title, action: 'Equip', run: () => actions.equipTire(tire.id) }
-    if (state === 'locked') return { title, action: `Buy the ${TIRES[stand - 1].name} first`, run: null }
-    return { title, action: `Buy - ${formatNumber(tire.cost)} Wins`, run: () => actions.buyTire(tire.id) }
+  // The Sword Counter sells swords in order, so it always offers your next one. Buying
+  // equips it; if you've picked an older one to hold, it offers your best back.
+  // The Sword Counter opens the Sword Shop (every sword, bought and equipped there); this
+  // brings it back if you closed it while still standing on the counter.
+  if (atCounter) {
+    const next = nextTire({ ownedTires: owned })
+    const title = next ? `Sword Shop - next: ${next.name}` : `Sword Shop - all ${TIRES.length} swords collected!`
+    return { title, action: 'Open', run: () => openPanel('swords') }
   }
   return null
 }

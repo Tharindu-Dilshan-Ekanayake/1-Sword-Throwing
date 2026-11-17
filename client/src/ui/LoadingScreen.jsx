@@ -5,29 +5,31 @@ import { iconUrl } from './icons'
 import StrokeText from './StrokeText'
 
 const TIPS = [
-  'Stand on a throw pad to practise throwing - every throw gives Skill!',
-  'More Skill = your phone smashes deeper, and every metre pays Wins!',
-  'Let go of DROP at the very top of the meter for a PERFECT throw: x1.5 depth, x1.6 Wins!',
-  'Rebirth at max level for x2, x3, x4... Skill and a higher level cap.',
-  'The deeper the floor, the more each metre pays.',
-  'Spend Wins on newer phones, pets and better throw pads.',
-  'Pets multiply all the Skill you gain.',
-  'You earn Skill every second your phone falls!',
-  'Every phone looks different - collect all 24!',
-  'Reach a new floor for the first time for a big Wins prize!',
+  'Stand at a training dummy to slash it and gain Power automatically!',
+  'More Power = your sword flies further down the valley, and every metre pays Wins!',
+  'HOLD THROW and let go when the meter is in the gold for a PERFECT throw: x1.5 distance, x1.6 Wins!',
+  'Rebirth at max level for x2, x3, x4... Power and a higher level cap.',
+  'The further your sword flies, the more each metre pays.',
+  'Spend Wins on bigger swords, pets and better training dummies.',
+  'Enchant your sword at the Enchant Altar: the Flame Aura flies further and leaves a trail of fire!',
+  'Pets multiply all the Power you gain.',
+  'You earn Power every second your sword flies!',
+  'Every sword is a different shape - wood, bamboo, bone, steel, gold, lava, diamond... collect all 36 - the 12 Legend swords pay extra Wins!',
+  'Sunblade Valley is 80 stages long - can you reach Legend Summit?',
+  'Rebirth 8 times to open the portal to Dragonfire Peaks: x3 Wins on every throw!',
 ]
 
 /**
- * The loading screen's backdrop, a launch park at golden hour in plain CSS (no image to
- * download): two floodlights glowing over a deep blue sky that warms to the horizon, the
- * dark line of the far stand, and the striped runway below it. Layers, top first.
+ * The loading screen's backdrop, a castle valley at dawn in plain CSS (no image to
+ * download): a deep blue sky warming to gold at the horizon, a low sun, the dark line of
+ * the far mountains, and the green valley with its long stone road below. Layers, top
+ * first.
  */
 const STADIUM_BACKDROP = [
-  'radial-gradient(circle at 14% 20%, rgba(255,250,225,0.95) 0 0.9%, rgba(255,236,190,0.35) 3%, transparent 9%)',
-  'radial-gradient(circle at 86% 20%, rgba(255,250,225,0.95) 0 0.9%, rgba(255,236,190,0.35) 3%, transparent 9%)',
-  'repeating-linear-gradient(180deg, rgba(255,255,255,0.8) 0 3px, transparent 3px 52px) bottom / 100% 40% no-repeat',
-  'repeating-linear-gradient(180deg, #2b9a47 0 26px, #37b455 26px 52px) bottom / 100% 40% no-repeat',
-  'linear-gradient(180deg, #132f74 0%, #2c5fc0 30%, #f0a067 50%, #ffd08c 54%, #232d48 54.4%, #34436a 60%)',
+  'radial-gradient(circle at 50% 52%, rgba(255,250,225,0.95) 0 2.2%, rgba(255,226,150,0.45) 6%, transparent 16%)',
+  'linear-gradient(90deg, transparent 44%, rgba(200,190,175,0.85) 44.5% 55.5%, transparent 56%) bottom / 100% 38% no-repeat',
+  'repeating-linear-gradient(180deg, #2b9a47 0 26px, #37b455 26px 52px) bottom / 100% 38% no-repeat',
+  'linear-gradient(180deg, #132f74 0%, #2c5fc0 30%, #f0a067 50%, #ffd08c 54%, #3a3f6a 54.4%, #4a5a86 62%)',
 ].join(', ')
 
 /**
@@ -67,14 +69,14 @@ export function LoadingScreen({ done }) {
       }}
     >
       <div className="pp-loading-disc" aria-hidden="true">
-        <img src={iconUrl('tire')} alt="" width="150" height="150" draggable={false} />
+        <img src={iconUrl('bat')} alt="" width="150" height="150" draggable={false} />
       </div>
 
-      {/* The game's name: PHONE over a big rainbow THROW, tilted like a sticker. */}
+      {/* The game's name: SWORD TOSS over a big rainbow LEGENDS, tilted like a sticker. */}
       <h1 className="m-0 flex flex-col items-center text-center leading-none" style={{ transform: 'rotate(-3deg)' }}>
-        <span style={{ fontSize: 'clamp(36px, 8vw, 84px)' }}>
+        <span style={{ fontSize: 'clamp(30px, 7vw, 72px)' }}>
           <StrokeText stroke="0.16em" gradient="linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #ffe36b 56%, #ffb21e 100%)">
-            +1 PHONE
+            +1 Sword
           </StrokeText>
         </span>
         <span style={{ fontSize: 'clamp(44px, 10vw, 118px)', marginTop: '-0.08em' }}>
@@ -82,11 +84,11 @@ export function LoadingScreen({ done }) {
             stroke="0.15em"
             gradient="linear-gradient(90deg, #ff4a4a 0%, #ff9a1e 18%, #ffe23a 36%, #4be05a 54%, #2fd0ff 72%, #b05cff 90%, #ff5fd2 100%)"
           >
-            DROP
+            Throwing
           </StrokeText>
         </span>
         <span className="text-base md:text-xl" style={{ marginTop: '0.4em' }}>
-          <StrokeText stroke={5}>AIM • DROP • SMASH • REBIRTH</StrokeText>
+          <StrokeText stroke={5}>TRAIN • THROW • EXPLORE • REBIRTH</StrokeText>
         </span>
       </h1>
 

@@ -1,4 +1,4 @@
-import { comboBonus, crowdBonus, dayNumber, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, SHOP, TIRES, TOSS_COOLDOWN, ZONES } from './balance.js'
+import { CLICK_INTERVAL, comboBonus, crowdBonus, dayNumber, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TRAIN_INTERVAL, ZONES } from './balance.js'
 import { applyStreak, claimQuest, claimQuestBonus, ensureQuests, progressQuests, questText, rollLuckyGift } from './engage.js'
 import {
   advanceTutorial,
@@ -6,9 +6,11 @@ import {
   applyGemProduct,
   applyRebirth,
   applyRoll,
-  applyThrow,
+  applyRollTick,
   applyTrain,
+  applyClickSwing,
   awardBadge,
+  buyBall,
   buyHealthPack,
   buyShopItem,
   buyTire,
@@ -18,6 +20,7 @@ import {
   claimPlaytime,
   createSession,
   deletePet,
+  equipBall,
   equipBestPets,
   equipPet,
   equipTire,
@@ -29,17 +32,16 @@ import {
   usePortal,
   usePotion,
 } from './logic.js'
-import { eggStandNear, FREE_REWARD, inRect, inRollZone, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
+import { atSwordCounter, eggStandNear, FREE_REWARD, inRollZone, MAX_MOVE_SPEED, onPad, portalAt, STAR } from './world.js'
 
-const TIRE_INDEX = Object.fromEntries(TIRES.map((t, i) => [t.id, i]))
-/** Reaching the hotel's deluxe floors (floor 21) earns its badge; the last floor has its own. */
-const SPACE_ZONE = 20
+/** Reaching Starfall Orbit earns its badge; the last stage has its own. */
+const SPACE_ZONE = ZONES.findIndex((z) => z.id === 'space')
 
 /** Quest progress is sent at least this often (seconds) while it's changing. */
 const QUEST_SYNC = 5
 /** How far off a pad still counts as "on" it (network jitter). */
 const PAD_SLACK = 0.8
-/** Same for the drop zone. */
+/** Same for the roll zone. */
 const ROLL_SLACK = 1.5
 /** Tires are bought by standing at their stand; allow for a little lag. */
 const STAND_SLACK = 2
@@ -55,10 +57,10 @@ const STAND_SLACK = 2
  * Events emitted (type, payload):
  * - 'profile'  { profile, session }  full state, after anything structural
  * - 'train'    { source, pad, gain, health, level, leveledUp, levels, maxed }  each
- *                Skill gain - one per throw; `source` is 'pad' (thrown on throw pad
- *                `pad`) or 'throw' (anywhere else, pad -1)
+ *                Health gain; `source` is 'pad' (pad is its index), 'roll' (while your
+ *                ball flies) or 'click' (a click swing), pad -1 for both
  * - 'roll'     { distance, wins, prize, discovered, blocked, broken, duration,
- *                multiplier, best, tireId }  a roll to replay
+ *                multiplier, best, tireId, ballId }  a hit to replay
  * - 'pack'     { amount }  a Health pack landed
  * - 'hatch'    { eggId, pets: [{ uid, id }] }  pets to reveal
  * - 'badge'    { id, name }
@@ -106,12 +108,16 @@ export class PlayerSession {
     this.questsChanged = false
     this.questSync = 0
 
-    /** Pad the client says it's on; checked against their position at every throw. */
+    /** Pad the client says it's on; verified against position every tick. */
     this.pad = -1
-    /** Server time of the next throw allowed (TOSS_COOLDOWN). */
-    this.nextTossAt = 0
-    /** Server time until which the player's phone is out (and its result) and can't drop again. */
+    this.trainTimer = 0
+    /** Server time until which the player's tire is out (and its result) and can't roll again. */
     this.busyUntil = 0
+    /** Server time the current roll stops; Health ticks in until then. */
+    this.rollingUntil = 0
+    this.rollTimer = 0
+    /** Server time of the last click swing that paid (they're rate-limited). */
+    this.clickAt = -Infinity
     this.dirty = false
   }
 
@@ -163,7 +169,11 @@ export class PlayerSession {
       const index = Number(pad)
       if (!Number.isInteger(index) || !PADS[index]) return
       if (!isPadUnlocked(this.profile, index)) return
-      this.pad = index
+      if (this.pad !== index) {
+        this.pad = index
+        // The first step lands a beat after getting on, not instantly.
+        this.trainTimer = TRAIN_INTERVAL * 0.5
+      }
     },
 
     leavePad() {
@@ -171,20 +181,17 @@ export class PlayerSession {
     },
 
     /**
-     * One throw of your phone (a click, a tap, THROW): Skill - a throw pad's worth when
-     * you're really standing on the pad you're on, else your phone's own. At most one per
-     * TOSS_COOLDOWN, and none while your phone is out on a drop.
+     * A click slash: you slash the air with your sword, for one gain. Not at a dummy (it
+     * slashes for you), not while a throw is out (on a throw spot your click winds up a
+     * throw instead - that's the client's to send as a throw); at most one every
+     * CLICK_INTERVAL (a little slack for network jitter, never enough for an autoclicker
+     * to beat it).
      */
-    toss(_payload, now) {
-      if (now < this.busyUntil || now < this.nextTossAt) return
-      this.nextTossAt = now + TOSS_COOLDOWN * 1000
-      const onPad = this.onClaimedPad()
-      const result = onPad ? applyTrain(this.profile, this.pad, now) : applyThrow(this.profile, now)
-      if (!result.ok) {
-        this.pad = -1
-        return
-      }
-      this.gain(onPad ? 'pad' : 'throw', onPad ? this.pad : -1, result)
+    clickSwing(_payload, now) {
+      if (now < this.busyUntil || this.onClaimedPad()) return
+      if (now - this.clickAt < CLICK_INTERVAL * 850) return
+      this.clickAt = now
+      this.gain('click', -1, applyClickSwing(this.profile, now))
       this.quest('rep', 1, now)
       this.tutorial('train')
     },
@@ -207,8 +214,8 @@ export class PlayerSession {
     },
 
     /**
-     * Drops your phone: only from the DROP ZONE, and not while one is still falling.
-     * `accuracy` (0-1) is where the throw meter stopped; absent for Auto Drop.
+     * Throws your sword: only from the THROW ZONE, and not while one is still flying.
+     * `accuracy` (0-1) is where the throw meter stood; absent for Auto Throw.
      */
     roll(payload, now) {
       if (now < this.busyUntil) return
@@ -224,6 +231,8 @@ export class PlayerSession {
       const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others))
       const gift = rollLuckyGift(this.profile, this.rand)
       this.busyUntil = now + result.cooldown * 1000
+      this.rollingUntil = now + result.duration * 1000
+      this.rollTimer = 0
       this.pad = -1
       this.emit('roll', {
         distance: result.distance,
@@ -237,6 +246,7 @@ export class PlayerSession {
         hit: result.hit,
         best: result.best,
         tireId: this.profile.equippedTire,
+        ballId: result.ballId,
         combo,
         others,
         gift,
@@ -248,7 +258,7 @@ export class PlayerSession {
       this.quest('combo', combo, now)
       this.quest('meters', result.distance, now)
       this.quest('far', result.distance, now)
-      // The HUD holds the new Wins back until the phone stops; the profile can go now.
+      // The HUD holds the new Wins back until the tire stops; the profile can go now.
       this.dirty = true
       this.tutorial('roll')
       this.badge('firstRoll')
@@ -259,7 +269,7 @@ export class PlayerSession {
     },
 
     buyTire({ id }) {
-      if (!this.nearStandFor(id)) return
+      if (!this.atCounter()) return
       const result = buyTire(this.profile, id)
       if (!result.ok) return
       this.dirty = true
@@ -268,6 +278,19 @@ export class PlayerSession {
 
     equipTire({ id }) {
       const result = equipTire(this.profile, id)
+      if (result.ok) this.dirty = true
+    },
+
+    /** Buys (in order) or equips an enchantment; the Enchant Altar's panel sends it from anywhere. */
+    buyBall({ id }) {
+      const result = buyBall(this.profile, String(id))
+      if (!result.ok) return
+      this.dirty = true
+      if (result.bought) this.tutorial('buyBall')
+    },
+
+    equipBall({ id }) {
+      const result = equipBall(this.profile, String(id))
       if (result.ok) this.dirty = true
     },
 
@@ -328,7 +351,7 @@ export class PlayerSession {
       this.afterReward(result)
     },
 
-    /** Picks up Palm Beach's Secret Star: only standing at it, in Palm Beach, once. */
+    /** Picks up Dragonfire Peaks' Secret Star: only standing at it, in Dragonfire Peaks, once. */
     findStar() {
       const p = this.getPosition()
       if (Math.hypot(p.x - STAR.x, p.z - STAR.z) > STAR.radius + 1) return
@@ -435,12 +458,13 @@ export class PlayerSession {
 
   // --- Simulation ------------------------------------------------------------------
 
-  /** Whether the player stands at (or right by) the stand for tire `id`. */
-  nearStandFor(id) {
-    const stand = TIRE_STANDS[TIRE_INDEX[id]]
-    if (!stand) return false
+  /**
+   * Whether the player stands on (or right by) the Sword Counter, where every sword is
+   * bought (in order: logic.js buyTire refuses any but the next).
+   */
+  atCounter() {
     const p = this.getPosition()
-    return inRect(standRect(stand), p.x, p.z, STAND_SLACK)
+    return atSwordCounter(p.x, p.z, STAND_SLACK)
   }
 
   /** Whether the player is really standing on the pad they claim. */
@@ -450,12 +474,24 @@ export class PlayerSession {
     return onPad(this.pad, p.x, p.z, PAD_SLACK)
   }
 
-  /**
-   * Advances the clock: playtime, quests and the day. (Skill only ever comes from a throw:
-   * nothing is earned just for being here.) Call at a steady rate (the room's simulation
-   * interval).
-   */
+  /** Advances training and the throw's Power ticks. Call at a steady rate (the room's simulation interval). */
   tick(dt, now) {
+    if (now < this.rollingUntil) {
+      // Health trickles in all the way along the track.
+      this.rollTimer += dt
+      while (this.rollTimer >= ROLL_TICK) {
+        this.rollTimer -= ROLL_TICK
+        this.gain('roll', -1, applyRollTick(this.profile, now))
+      }
+    } else if (this.pad >= 0 && now >= this.busyUntil && this.onClaimedPad()) {
+      this.trainTimer += dt
+      while (this.trainTimer >= TRAIN_INTERVAL) {
+        this.trainTimer -= TRAIN_INTERVAL
+        this.trainOnce(now)
+      }
+    } else {
+      this.trainTimer = Math.min(this.trainTimer, TRAIN_INTERVAL * 0.5)
+    }
     this.profile.stats.playtime += dt
     // A minute played towards today's quests; and past midnight, a new day: fresh
     // quests and the next day of the streak.
@@ -480,7 +516,7 @@ export class PlayerSession {
     if (this.dirty) this.sendProfile()
   }
 
-  /** Tells the client about a Skill gain from `source` ('pad' or 'throw'). */
+  /** Tells the client about a Health gain from `source` ('pad', 'roll' or 'click'). */
   gain(source, pad, result) {
     // At max level gains stop; there's nothing to show.
     if (result.gain > 0) {
@@ -501,4 +537,14 @@ export class PlayerSession {
     }
   }
 
+  trainOnce(now) {
+    const result = applyTrain(this.profile, this.pad, now)
+    if (!result.ok) {
+      this.pad = -1
+      return
+    }
+    this.gain('pad', this.pad, result)
+    this.quest('rep', 1, now)
+    this.tutorial('train')
+  }
 }

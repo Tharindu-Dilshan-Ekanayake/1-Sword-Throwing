@@ -95,8 +95,15 @@ export function attachIconRenderer(gl) {
   if (!rig) {
     rig = buildRig()
     // Its shader compiled in the background now, so the first portrait can't stall a
-    // frame on it (with shadows on, the world's lit program isn't the same one).
-    if (!import.meta.env.DEV) gl.compileAsync?.(rig.scene, rig.camera).catch(() => null)
+    // frame on it (with shadows on, the world's lit program isn't the same one). With the
+    // portrait target bound: a render target gets its own variant of every shader (linear
+    // output, no tone mapping), and compileAsync gathers for the target bound when called.
+    if (!import.meta.env.DEV && gl.compileAsync) {
+      const previousTarget = gl.getRenderTarget()
+      gl.setRenderTarget(rig.target)
+      gl.compileAsync(rig.scene, rig.camera).catch(() => null)
+      gl.setRenderTarget(previousTarget)
+    }
   }
 }
 

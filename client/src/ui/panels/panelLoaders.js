@@ -11,6 +11,8 @@ export const PANEL_LOADERS = {
   items: () => import('./ItemsPanel'),
   offline: () => import('./WelcomeBackPanel'),
   store: () => import('./StorePanel'),
+  balls: () => import('./BallsPanel'),
+  swords: () => import('./SwordsPanel'),
   leaderboards: () => import('./LeaderboardsPanel'),
   settings: () => import('./SettingsPanel'),
 }

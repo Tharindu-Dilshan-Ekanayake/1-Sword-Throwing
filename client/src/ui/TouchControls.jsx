@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { tapSwing } from '../game/clickSwing'
 import { runtime } from '../game/runtime'
-import { requestToss } from '../game/toss'
 import { useGame } from '../store/game'
+import Icon from './Icon'
 import { GRADIENTS } from './hud/style'
 
 /** Joystick travel radius, in CSS pixels. */
@@ -23,9 +24,11 @@ const roundButton = (size, background) => ({
 
 /**
  * On-screen controls for touch devices: a floating joystick that appears wherever the
- * left side of the screen is touched, a jump button and over it THROW, which throws your
- * phone for Skill (a tap on the game does too). Everything else is walking onto things:
- * the drop zone, a throw pad, a phone stand.
+ * left side of the screen is touched, a jump button, and a BAT button above it: tap it to
+ * toss a ball up and smack it for Power (hold it to keep swinging, once every
+ * CLICK_INTERVAL). At a batting station the HIT / SWING button takes over, and the bat
+ * button steps aside. Everything else is walking onto things: a batting station, a cage,
+ * a bat stand.
  *
  * Writes straight into `runtime.input` and moves the knob through refs, so dragging
  * never re-renders React.
@@ -35,8 +38,28 @@ export function TouchControls() {
   const baseRef = useRef(null)
   const knobRef = useRef(null)
   const active = useRef({ id: null, x: 0, y: 0 })
-  // No throwing at the drop zone (DROP is there), mid-drop or with a panel open.
-  const canThrow = useGame((s) => !s.zone.rollZone && !s.roll && !s.rollResult && !s.panel)
+  // The slash button: gone at a throw spot (THROW is there), while a sword flies, and
+  // under a panel.
+  const batVisible = useGame((s) => !s.zone.atPlate && !s.roll && !s.rollResult && !s.panel)
+  // Under a panel the whole set steps aside (display: none, not unmounted), so no stick or
+  // button sits over the popup or catches a tap meant for it.
+  const panelOpen = useGame((s) => s.panel !== null)
+  const holdTimer = useRef(0)
+  const stopHold = () => {
+    clearInterval(holdTimer.current)
+    holdTimer.current = 0
+  }
+
+  // A stick or button held as the panel opens lets go (its release would be hidden).
+  useEffect(() => {
+    if (!panelOpen) return
+    active.current.id = null
+    runtime.input.joyX = 0
+    runtime.input.joyY = 0
+    runtime.input.jump = false
+    clearInterval(holdTimer.current)
+    holdTimer.current = 0
+  }, [panelOpen])
 
   // A touchscreen laptop can start with a mouse; show the controls on first touch.
   useEffect(() => {
@@ -53,6 +76,7 @@ export function TouchControls() {
       runtime.input.joyX = 0
       runtime.input.joyY = 0
       runtime.input.jump = false
+      clearInterval(holdTimer.current)
     },
     [],
   )
@@ -104,7 +128,7 @@ export function TouchControls() {
   }
 
   return (
-    <>
+    <div style={{ display: panelOpen ? 'none' : 'contents' }}>
       <div
         className="absolute bottom-0 left-0 z-10 h-[62%] w-[42%] touch-none"
         onPointerDown={onDown}
@@ -132,25 +156,25 @@ export function TouchControls() {
         </div>
       </div>
 
-      {canThrow && (
+      {batVisible && (
         <button
           type="button"
-          aria-label="Throw your phone"
-          className="touch-throw pp-btn pp-chunky absolute z-20 flex touch-none flex-col items-center justify-center rounded-full text-white"
-          style={roundButton(96, GRADIENTS.goldButton)}
+          aria-label="Slash with your sword"
+          className="touch-bat pp-btn pp-chunky absolute z-20 flex touch-none items-center justify-center rounded-full text-white"
+          style={roundButton(84, GRADIENTS.goldButton)}
           onPointerDown={(e) => {
             e.preventDefault()
-            requestToss()
+            tapSwing()
+            stopHold()
+            // Held: keeps slashing (tapSwing paces itself).
+            holdTimer.current = setInterval(() => tapSwing(), 120)
           }}
+          onPointerUp={stopHold}
+          onPointerCancel={stopHold}
+          onPointerLeave={stopHold}
         >
-          <span className="pp-gloss" style={{ borderRadius: '48px 48px 28px 28px' }} />
-          <svg viewBox="0 0 24 24" width="34" height="34" fill="#fff" stroke="#111" strokeWidth="1.6" strokeLinejoin="round">
-            <rect x="7" y="2.5" width="10" height="19" rx="2.2" transform="rotate(-20 12 12)" />
-            <path d="M3 7.5l3 1.2M2.6 11.5l3 .4M3.4 15.4l2.8-.6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1, marginTop: 1, letterSpacing: 0.5, textShadow: '0 2px 0 #111, 0 0 3px #111' }}>
-            THROW
-          </span>
+          <span className="pp-gloss" style={{ borderRadius: '42px 42px 24px 24px' }} />
+          <Icon name="bat" size={52} />
         </button>
       )}
 
@@ -178,7 +202,7 @@ export function TouchControls() {
           <path d="M5 15l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-    </>
+    </div>
   )
 }
 

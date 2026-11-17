@@ -3,19 +3,25 @@ canDie: false
 hasScore: true
 ---
 
-# Phone Plunge: Boxity integration
+# Sword Toss Legends: Boxity integration
 
-The player cannot die: there is no death or game-over screen. You practise throwing on
-throw pads for Skill, walk to the DROP ZONE at the edge of the mountain-top lobby, hold DROP to charge
-the throw meter and let go: your phone falls through the clouds onto the hotel far below,
-smashes its glass roof and then floor after floor - more Skill smashes deeper, every
-metre pays Wins, and the meter (let go at the top of its wobble for PERFECT) adds up to
-x1.6 Wins and half as deep again. You always get another drop. Phones (24 kinds, bought
-with Wins) change how your phone looks and how much Skill each gain is worth.
+The player cannot die: there is no death or game-over screen. You slash training dummies
+for Power (nine dummies, x1 to x130), step onto a throw spot in the THROW ZONE, hold THROW
+to wind up and let go at the top of the meter (PERFECT for up to x1.5 distance and x1.6
+Wins): your sword spins end over end down a long valley road - Sunblade Valley's eighty
+themed stages, nearly 26 km - and sticks point-first into the road. More Power throws it
+further, every metre pays Wins, and a stage reached for the first time pays a prize. You
+always get another throw. Swords (36 kinds, each its own shape and its own trail - wood, bamboo, stone,
+bone, copper, iron, steel... gold, lava, gems, galaxy, dragon, cyber, infinity, then 12 Legend swords that also pay +10% to +200% Wins - bought
+with Wins at the SWORD SHOP) set how much Power each gain is worth; enchantments (12
+auras from the ENCHANT ALTAR) throw further, pay more and trail fire, frost or lightning.
+Rebirth 8 times and hold 1M Wins to open the portal to Dragonfire Peaks (World 2, x3
+Wins).
 
-Built on the Phone Plunge template: inside the code the old names stay (`health` is
-Skill, a `tire` is a phone, a `pad` is a throw pad, a `roll` is a drop and a `zone` is a
-hotel floor), so saves and the server protocol are unchanged.
+Built on the Phone Plunge template (networking, saves, identity) with the +1 Baseball
+Launch gameplay layer: inside the code the old names stay (`health` is Power, a `tire`
+is a sword, a `ball` is an enchantment, a `pad` is a training dummy, a `roll` is a throw
+and a `zone` is a stage of the road), so the server protocol is unchanged.
 
 ## Leaderboards
 
@@ -28,7 +34,7 @@ player leaves, each pod sends the changed scores of its verified players to
 |------------|------------------|--------------------------------------|---------|
 | `rebirths` | Rebirths         | `profile.rebirths`                   | number  |
 | `wins`     | Total Wins       | `profile.stats.totalWins`            | compact |
-| `distance` | Deepest Drop (m) | `floor(profile.stats.bestDistance)`  | compact |
+| `distance` | Longest Throw (m)| `floor(profile.stats.bestDistance)`  | compact |
 | `playtime` | Minutes Played   | `floor(profile.stats.playtime / 60)` | number  |
 
 All four are `order: desc`, `mode: best`, `reset: none`.
@@ -86,7 +92,7 @@ shows. Body proportions are applied by moving bones, so accessories follow them.
 |-------------------------|---------------------------------------------------------------|
 | `BLOXITY_REPORT_TOKEN`  | Token for leaderboard and room reports (none set = no reports) |
 | `MATCHMAKER_REPORT_URL` | Where the Open Rooms reporter posts (injected by Boxity hosting) |
-| `BLOXITY_GAME_ID`       | Hosted game id for reports (default `1-phone-drop`)              |
+| `BLOXITY_GAME_ID`       | Hosted game id for reports (default `1-sword-throwing`)          |
 | `LEGION_WEBHOOK_SECRET` | Must match the webhook's `x-legion-webhook-secret` header     |
 | `MONGODB_URI`           | Shared database for profiles, Gems grants and the save-ticket secret. Required when hosted: without it saves go to a file inside the pod and are lost on every redeploy (the server logs an error and `/api/health` shows `db: "sqlite"`) |
 | `BLOXITY_API_URL` etc.  | Platform URLs, injected by Boxity hosting; no defaults are written in code (`server/src/bloxityEnv.js`) |

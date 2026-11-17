@@ -5,6 +5,13 @@ import Icon from '../Icon'
 import StrokeText from '../StrokeText'
 import { u } from '../hud/style'
 
+/**
+ * Room kept clear along the bottom while a panel is open: the portal draws its banner ad
+ * there (Boxity screen ads, integration.js 'panel' screen), and it would otherwise sit on
+ * top of the panel's lower rows. About a banner tall on a desktop, less on a short phone.
+ */
+export const AD_STRIP = 'clamp(54px, 12vh, 110px)'
+
 /** The red square X that sits on every panel's top-right corner. */
 export function CloseButton({ onClick, style }) {
   return (
@@ -56,7 +63,8 @@ export function Panel({ title, icon, width = 920, children, footer, onClose }) {
   return (
     <div
       className="pp-font pointer-events-auto absolute inset-0 z-40 flex items-center justify-center"
-      style={{ background: 'rgba(0, 0, 0, 0.18)' }}
+      // Dimmed well down: the lobby's labels and swords behind must not show through or compete.
+      style={{ background: 'rgba(0, 0, 0, 0.6)', paddingBottom: AD_STRIP }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) close()
       }}
@@ -73,7 +81,7 @@ export function Panel({ title, icon, width = 920, children, footer, onClose }) {
             background: 'linear-gradient(180deg, rgb(30 33 38 / var(--panel-alpha, 0.94)), rgb(18 20 24 / var(--panel-alpha, 0.94)))',
             border: `${u(6)} solid #0b0c0e`,
             boxShadow: `inset 0 0 0 ${u(3)} rgba(255,255,255,0.08), 0 ${u(10)} ${u(30)} rgba(0,0,0,0.35)`,
-            maxHeight: `calc(100vh - ${u(56)} - 24px)`,
+            maxHeight: `calc(100vh - ${u(56)} - 24px - ${AD_STRIP})`,
             overflowY: 'auto',
           }}
         >

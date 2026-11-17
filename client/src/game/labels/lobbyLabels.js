@@ -1,10 +1,11 @@
-import { EGGS, PADS, PETS, RARITIES, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
+import { EGGS, PADS, PETS, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
 import { isPadUnlocked } from '@shared/logic'
-import { EGG_STANDS, FREE_REWARD, padCenterZ, PORTALS, ROLL_ZONE, SPHINX_STAND, TABLE_X, TIRE_STANDS } from '@shared/world'
+import { BALL_SHOP, EGG_STANDS, FREE_REWARD, PORTALS, SPHINX_STAND, STAGE_TOWERS, THROW_STAGE, TIRE_STANDS } from '@shared/world'
 
 import { eggHeight } from '../world/eggs'
-import { BOARD_BOTTOM, BOARD_HEIGHT, PAD_THEMES } from '../world/structures'
+import { PAD_THEMES, padLabelAt } from '../world/structures'
+import { COUNTER_LABEL, PLATE_LABEL_X } from '../world/swordWall'
 import { SCOREBOARD } from '../world/terrain'
 
 /**
@@ -17,25 +18,27 @@ export const TEXT = {
   white: ['#ffffff', '#ffffff', '#dfe7f0'],
   red: ['#ffb0a8', '#ff4a3b', '#d4142a'],
   blue: ['#e0faff', '#7fe2ff', '#2fa8ff'],
+  lava: ['#ffe0a0', '#ff8a1e', '#e2240c'],
 }
 
 const tint = (hex) => ['#ffffff', hex, hex]
 
 /**
- * "x4 SKILL / Turbo Throw Pad / LOCKED: 2 Rebirths", "x1 SKILL / Basic Throw Pad / FREE",
- * "x40 SKILL / VERY OP! / 150K Wins"... (hung on each throw pad's backboard).
+ * "x4 POWER / Stone Dummy / LOCKED: 2 Rebirths", "x1 POWER / Straw Dummy / FREE",
+ * "x40 POWER / VERY OP! / 150K Wins"... (over each training dummy's board). The names come
+ * from shared/balance.js PADS.
  */
 export function padLabelSpec(index, unlocked, world = 0) {
   const pad = PADS[index]
   const theme = PAD_THEMES[index]
   const lines = [
-    { text: `x${formatNumber(pad.mult)} SKILL`, size: 54, icon: 'heart', gradient: tint(theme.text) },
+    { text: `x${formatNumber(pad.mult)} POWER`, size: 54, icon: 'heart', gradient: tint(theme.text) },
     { text: pad.name, size: 34, fill: '#ffffff' },
   ]
   if (unlocked) {
     lines.push({ text: pad.rebirths === 0 && !pad.product ? 'FREE' : 'UNLOCKED', size: 44, gradient: TEXT.green })
   } else if (pad.world !== undefined && world !== pad.world) {
-    lines.push({ text: `${WORLDS[pad.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.blue })
+    lines.push({ text: `${WORLDS[pad.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.lava })
   } else if (pad.product) {
     lines.push({ text: pad.tag, size: 46, rainbow: true })
     lines.push({ text: `${formatNumber(SHOP[pad.product].price)} Wins`, size: 42, icon: 'trophy', gradient: TEXT.gold })
@@ -50,7 +53,7 @@ export function padLabelSpec(index, unlocked, world = 0) {
 const padReserve = (index) => {
   const pad = PADS[index]
   const lines = [
-    { text: `x${formatNumber(pad.mult)} SKILL`, size: 54, icon: 'heart' },
+    { text: `x${formatNumber(pad.mult)} POWER`, size: 54, icon: 'heart' },
     { text: pad.name, size: 34 },
   ]
   if (pad.product) {
@@ -65,17 +68,17 @@ const padReserve = (index) => {
 export function padLabels(profile) {
   return PADS.map((pad, i) => ({
     id: `pad-${i}`,
-    // Well in front of the throw pad's backboard (structures.js), centred on it: the label
-    // turns to face the camera and is wider than the board, so any nearer and its far half
-    // swings behind the board seen from an angle.
-    position: [TABLE_X - 2.2, BOARD_BOTTOM + BOARD_HEIGHT / 2, padCenterZ(i)],
+    // Well in front of the pad's board (structures.js padLabelAt), over the dummy: the
+    // label turns to face the camera and is wider than the board, so any nearer and its far
+    // half swings behind the board seen from an angle.
+    position: padLabelAt(i),
     spec: padLabelSpec(i, isPadUnlocked(profile, i), profile.world || 0),
     reserve: padReserve(i),
     fade: 150,
   }))
 }
 
-/** Ownership state of each phone stand: 'equipped' | 'owned' | 'buy' | 'locked'. */
+/** Ownership state of each sword stand: 'equipped' | 'owned' | 'buy' | 'locked'. */
 export function standState(profile, index) {
   const tire = TIRES[index]
   if (profile.equippedTire === tire.id) return 'equipped'
@@ -84,61 +87,91 @@ export function standState(profile, index) {
   return !previous || profile.ownedTires.includes(previous.id) ? 'buy' : 'locked'
 }
 
-/** A phone's rarity line: in its rarity's colour, rainbow for the Secret ones. */
-const rarityLine = (tire) => {
-  const rarity = RARITIES[tire.rarity]
-  return tire.rarity === 'secret'
-    ? { text: rarity.name.toUpperCase(), size: 36, rainbow: true }
-    : { text: rarity.name.toUpperCase(), size: 34, gradient: tint(rarity.color) }
+/**
+ * The Sword Wall's name plates (world/swordWall.js): canvas pixels per metre, and the
+ * widest a line may be before it's drawn smaller (so every plate's text fits its 3.7 m
+ * block - a long name like "Abyssal Trident Blade" shrinks, the plate doesn't widen).
+ */
+const PLATE_PX = 108
+const PLATE_LINE_MAX = 375
+
+/** "+5.7B Power", and a Legend sword's Wins bonus beside it: "+5.7B Power  +10% Wins". */
+const statsText = (tire) => {
+  const power = `+${formatNumber(tire.power)} Power`
+  return tire.wins > 1 ? `${power}  +${Math.round((tire.wins - 1) * 100)}% Wins` : power
+}
+
+/** The plate's last line: EQUIPPED / OWNED, or the price - green for the next to buy, red past it. */
+const stateLine = (tire, state) => {
+  if (state === 'equipped') return { text: 'EQUIPPED', size: 38, gradient: TEXT.gold }
+  if (state === 'owned') return { text: 'OWNED', size: 38, gradient: TEXT.blue }
+  const price = tire.cost > 0 ? `${formatNumber(tire.cost)} Wins` : 'FREE'
+  return state === 'buy'
+    ? { text: `NEXT: ${price}`, size: 38, icon: 'trophy', gradient: TEXT.price }
+    : { text: price, size: 38, icon: 'trophy', gradient: TEXT.red }
 }
 
 /**
- * A state tag (EQUIPPED / OWNED / CAN BUY! / LOCKED), the phone's name, "+3 Skill" (each
- * gain), then its price in Wins - or its rarity once it's yours.
+ * A sword's name plate on the Sword Wall, under its niche: its name (biggest), its Power
+ * (and a Legend sword's Wins bonus), then EQUIPPED / OWNED or its price. Flat on the wall,
+ * so it reads from right across the courtyard. (Its rarity shows in its niche's glow.)
  */
 export function standLabelSpec(index, state) {
   const tire = TIRES[index]
-  const tag =
-    state === 'equipped'
-      ? { text: 'EQUIPPED', size: 36, gradient: TEXT.green }
-      : state === 'owned'
-        ? { text: 'OWNED', size: 36, gradient: TEXT.blue }
-        : state === 'buy'
-          ? { text: 'CAN BUY!', size: 36, gradient: TEXT.green }
-          : { text: 'LOCKED', size: 36, gradient: TEXT.red }
-  const last =
-    state === 'equipped' || state === 'owned'
-      ? rarityLine(tire)
-      : { text: `${formatNumber(tire.cost)} Wins`, size: 40, icon: 'trophy', gradient: state === 'locked' ? TEXT.red : TEXT.price }
   return {
-    lines: [tag, { text: tire.name, size: 46, fill: '#ffffff' }, { text: `+${formatNumber(tire.power)} Skill`, size: 40, icon: 'heart', gradient: TEXT.gold }, last],
-    pxPerUnit: 70,
+    lines: [
+      { text: tire.name, size: 48, fill: '#ffffff' },
+      { text: statsText(tire), size: 26, icon: 'heart', gradient: TEXT.gold },
+      stateLine(tire, state),
+    ],
+    pxPerUnit: PLATE_PX,
+    maxWidth: PLATE_LINE_MAX,
   }
 }
 
-/** Largest a stand label can get, so its atlas slot fits every state. */
-const standReserve = (index) => ({
-  lines: [
-    { text: 'CAN BUY!', size: 36 },
-    { text: TIRES[index].name, size: 46 },
-    { text: `+${formatNumber(TIRES[index].power)} Skill`, size: 40, icon: 'heart' },
-    { text: `${formatNumber(TIRES[index].cost)} Wins`, size: 40, icon: 'trophy' },
-  ],
-})
+/** Largest a plate can get (its widest state line), so its atlas slot fits every state. */
+const standReserve = (index) => {
+  const tire = TIRES[index]
+  return {
+    lines: [
+      { text: tire.name, size: 48 },
+      { text: statsText(tire), size: 26, icon: 'heart' },
+      { text: `NEXT: ${formatNumber(tire.cost)} Wins`, size: 38, icon: 'trophy' },
+    ],
+    maxWidth: PLATE_LINE_MAX,
+  }
+}
 
 export function standLabels(profile) {
   return TIRE_STANDS.map((stand) => ({
     id: `stand-${stand.index}`,
-    // Each row back rides higher, so they clear the rows in front seen from the plaza.
-    position: [stand.x, stand.y + 6.8 + stand.row * 1.35, stand.z],
+    // On the plate under the niche's sword (TireShop.jsx), flat on the wall facing the courtyard.
+    position: [PLATE_LABEL_X, stand.plateY, stand.z],
+    facing: stand.yaw,
     spec: standLabelSpec(stand.index, standState(profile, stand.index)),
     reserve: standReserve(stand.index),
-    fade: 70,
+    fade: 125,
   }))
 }
 
+/** On the Sword Counter's sign board, flat, facing the courtyard: where to buy. */
+const counterLabel = () => ({
+  id: 'sword-counter',
+  position: COUNTER_LABEL,
+  facing: -Math.PI / 2,
+  spec: {
+    lines: [
+      { text: 'SWORD COUNTER', size: 56, gradient: TEXT.gold },
+      { text: 'Stand here to buy your next sword!', size: 26, gradient: TEXT.white },
+    ],
+    pxPerUnit: 125,
+    maxWidth: 420,
+  },
+  fade: 110,
+})
+
 /** The big eggs' title colours. */
-const BIG_EGG_TEXT = { volcano: TEXT.red, beach: TEXT.blue }
+const BIG_EGG_TEXT = { volcano: TEXT.red, beach: TEXT.lava }
 
 export function eggLabels(profile) {
   return EGG_STANDS.map((stand) => {
@@ -149,7 +182,7 @@ export function eggLabels(profile) {
       ? [
           { text: `${egg.name} Egg`, size: 54, gradient: BIG_EGG_TEXT[stand.eggId] || TEXT.red },
           elsewhere
-            ? { text: `${WORLDS[egg.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.blue }
+            ? { text: `${WORLDS[egg.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.lava }
             : { text: `${formatNumber(egg.cost.wins)} Wins`, size: 46, icon: 'trophy', gradient: TEXT.gold },
         ]
       : [
@@ -190,14 +223,14 @@ export function sphinxLabel(stock) {
   }
 }
 
-/** The jumbotron over the south stand, lettered like the arch: the game's name. */
+/** The great banner board on the south hills: the game's name. */
 const scoreboardLabel = () => ({
   id: 'scoreboard',
   position: [SCOREBOARD.x, SCOREBOARD.y + 0.8 + SCOREBOARD.height / 2, SCOREBOARD.z - 1.5],
   spec: {
     lines: [
-      { text: 'PHONE PLUNGE', size: 100, gradient: TEXT.gold },
-      { text: 'TRAIN - DROP - SMASH - REBIRTH', size: 44, gradient: TEXT.white },
+      { text: 'SWORD TOSS LEGENDS', size: 100, gradient: TEXT.gold },
+      { text: 'TRAIN - THROW - REBIRTH', size: 44, gradient: TEXT.white },
     ],
     pxPerUnit: 34,
   },
@@ -212,8 +245,8 @@ const freeRewardLabel = () => ({
 })
 
 /**
- * Where the portal goes: Palm Beach (and what opens it - rebirths and Wins - until it's
- * open), or home.
+ * Where the portal goes: Dragonfire Peaks (and what opens it - rebirths and Wins - until
+ * it's open), or home. (Names from shared/balance.js WORLDS.)
  */
 const portalLabel = (profile) => (portal) => {
   const home = profile.world === 1
@@ -225,7 +258,7 @@ const portalLabel = (profile) => (portal) => {
         { text: 'Back home', size: 42, gradient: TEXT.white },
       ]
     : [
-        { text: WORLDS[1].name.toUpperCase(), size: 60, gradient: TEXT.blue },
+        { text: WORLDS[1].name.toUpperCase(), size: 60, gradient: TEXT.lava },
         open
           ? { text: `x${WORLDS[1].wins} Wins!`, size: 46, icon: 'trophy', gradient: TEXT.gold }
           : { text: `${need.rebirths} Rebirths + ${formatNumber(need.wins)} Wins`, size: 40, icon: 'rebirth', gradient: TEXT.white },
@@ -245,14 +278,38 @@ const portalLabel = (profile) => (portal) => {
   }
 }
 
-/** At the back of the drop zone: what it's for. */
-const dropLabel = () => ({
-  id: 'drop-zone',
-  position: [0, 4.2, ROLL_ZONE.maxZ - 1],
+/**
+ * On the throw stage's two flag towers, facing spawn: what the stage is for. Each hangs
+ * just in front of its tower's south face and a little out past its far side, so it never
+ * reaches over the stage - nor between a player on it and the road (the throw camera
+ * looks north from behind and above you).
+ */
+const stageLabels = () =>
+  STAGE_TOWERS.map((t, i) => {
+    const out = t.x > (THROW_STAGE.minX + THROW_STAGE.maxX) / 2 ? 1 : -1
+    return {
+      id: `stage-${i}`,
+      position: [t.x + out * 1.2, 10.6, t.z + 1.6],
+      spec: {
+        lines: [
+          { text: 'THROW STAGE', size: 56, gradient: TEXT.gold },
+          { text: 'Stand anywhere on the stage -', size: 32, gradient: TEXT.white },
+          { text: 'hold THROW, let go!', size: 32, gradient: TEXT.white },
+        ],
+        pxPerUnit: 66,
+      },
+      fade: 130,
+    }
+  })
+
+/** Over the Enchant Altar: what it does. */
+const enchantLabel = () => ({
+  id: 'enchants',
+  position: [BALL_SHOP.x + 3.6, 10.3, BALL_SHOP.z],
   spec: {
     lines: [
-      { text: 'DROP YOUR PHONE!', size: 60, gradient: TEXT.gold },
-      { text: 'Smash deeper = MORE WINS', size: 40, gradient: TEXT.white },
+      { text: 'ENCHANTS', size: 62, gradient: ['#ffffff', '#e2c8ff', '#b07aff'] },
+      { text: 'Power up your sword!', size: 42, gradient: TEXT.white },
     ],
     pxPerUnit: 52,
   },
@@ -261,5 +318,16 @@ const dropLabel = () => ({
 
 /** Every label in the lobby. */
 export function lobbyLabels(profile, { sphinxStock = 0 } = {}) {
-  return [...padLabels(profile), ...standLabels(profile), ...eggLabels(profile), sphinxLabel(sphinxStock), scoreboardLabel(), freeRewardLabel(), dropLabel(), ...PORTALS.map(portalLabel(profile))]
+  return [
+    ...padLabels(profile),
+    ...standLabels(profile),
+    counterLabel(),
+    ...eggLabels(profile),
+    sphinxLabel(sphinxStock),
+    scoreboardLabel(),
+    freeRewardLabel(),
+    ...stageLabels(),
+    enchantLabel(),
+    ...PORTALS.map(portalLabel(profile)),
+  ]
 }

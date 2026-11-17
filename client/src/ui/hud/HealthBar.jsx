@@ -53,7 +53,7 @@ function LevelBar() {
       }}
     >
       {/* Grows by a transform, not its width: the bar fills on every Power gain (twice a
-          second on a treadmill), and an animated width re-laid-out the page every frame. */}
+          second in a batting cage), and an animated width re-laid-out the page every frame. */}
       <div className="absolute inset-0 origin-left transition-transform duration-300 ease-out" style={{ transform: `scaleX(${fill})`, background: BAR_FILL }} />
       <div className="absolute" style={{ left: u(10), right: u(10), top: u(5), height: u(12), borderRadius: u(6), background: 'rgba(255,255,255,0.25)' }} />
       <div className="absolute inset-0 flex items-center justify-between" style={{ padding: `0 ${u(18)}`, fontSize: u(50) }}>
@@ -73,14 +73,17 @@ function PackButton({ index, amount, price, afford }) {
     }
     actions.buyPack(index)
   }
+  // Big numbers ("+880T") shrink and sit higher, clear of the price in the corner.
+  const text = `+${formatNumber(amount)}`
+  const long = text.length > 4
   return (
-    <ChunkyButton gradient={PACK_GRADIENTS[index]} onClick={buy} title={`+${formatNumber(amount)} Skill`} radius={8} border={5} style={{ width: u(290), height: u(76) }}>
+    <ChunkyButton gradient={PACK_GRADIENTS[index]} onClick={buy} title={`+${formatNumber(amount)} Power`} radius={8} border={5} style={{ width: u(290), height: u(76) }}>
       <Icon name="heart" size={u(62)} className="absolute" style={{ left: u(10) }} />
-      <span className="relative" style={{ fontSize: u(48), marginLeft: u(30) }}>
-        <StrokeText stroke={u(10)}>+{formatNumber(amount)}</StrokeText>
+      <span className="relative" style={{ fontSize: u(long ? 34 : 48), marginLeft: u(long ? 30 : 30), marginRight: u(long ? 90 : 0), marginBottom: u(long ? 14 : 0) }}>
+        <StrokeText stroke={u(long ? 8 : 10)}>{text}</StrokeText>
       </span>
       <span className="absolute" style={{ right: u(8), bottom: u(4) }}>
-        <Price amount={price} size={26} afford={afford} />
+        <Price amount={price} size={long ? 22 : 26} afford={afford} />
       </span>
     </ChunkyButton>
   )
@@ -109,13 +112,13 @@ export function HealthBar() {
           <Icon name="heart" size={u(96)} />
           <span style={{ fontSize: u(76), lineHeight: 1 }}>
             <StrokeText stroke={u(13)} gradient={HEALTH_FILL}>
-              {formatNumber(health)} SKILL
+              {formatNumber(health)}
             </StrokeText>
           </span>
         </span>
         <span style={{ fontSize: u(36), marginBottom: u(4) }}>
           <StrokeText stroke={u(7)} gradient={BOOST}>
-            {formatMultiplier(boost)} Multiplier
+            {formatMultiplier(boost)} Power Boost
           </StrokeText>
         </span>
       </div>

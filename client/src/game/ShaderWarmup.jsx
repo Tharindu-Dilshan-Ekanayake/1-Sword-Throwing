@@ -1,7 +1,7 @@
 import { useThree } from '@react-three/fiber'
 import { useLayoutEffect } from 'react'
 
-import { linkPrograms } from './linkPrograms'
+import { linkPrograms, withHiddenShown } from './linkPrograms'
 
 /** Layer nothing lives on: the main camera looks at it while shaders compile. */
 const BLANK_LAYER = 31
@@ -40,7 +40,8 @@ export function ShaderWarmup({ onDone }) {
     const probe = camera.clone()
     probe.layers.set(0)
     performance.mark('pp:compile-start')
-    gl.compileAsync(scene, probe)
+    // Hidden things too (withHiddenShown), so none of them stalls a frame when it first appears.
+    withHiddenShown(scene, () => gl.compileAsync(scene, probe))
       .catch((err) => console.warn('[warmup] shader precompile failed', err))
       .finally(() => {
         if (cancelled) return

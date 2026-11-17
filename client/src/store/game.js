@@ -37,18 +37,18 @@ export const useGame = create((set, get) => ({
   leaderboards: null,
 
   /** Where the player is standing, from the ticker. */
-  zone: { pad: -1, padNear: -1, rollZone: false, atPosts: false, stand: -1, egg: null, portal: null, freeReward: false, sphinx: false },
+  zone: { pad: -1, padNear: -1, rollZone: false, atPlate: false, ballShop: false, swordCounter: false, egg: null, portal: null, freeReward: false, sphinx: false },
 
   /** Which modal panel is open: 'rebirth' | 'daily' | 'pets' | 'items' | 'store' | ... */
   panel: null,
   /** Extra data for the open panel (e.g. which egg the hatch panel is for). */
   panelData: null,
 
-  /** A drop in progress: { distance, wins, prize, blocked, duration, best, prevBest, floor }. */
+  /** A hit in progress (the template's roll): { distance, wins, prize, blocked, duration, best }. */
   roll: null,
-  /** Wins earned by the current drop, held back from the HUD until the phone stops. */
+  /** Wins earned by the current hit, held back from the HUD until the ball stops. */
   pendingWins: 0,
-  /** "+N Wins!" result once the phone has stopped. */
+  /** "+N Wins!" result once the ball has stopped. */
   rollResult: null,
   /** A short celebration banner: { text, id } (new zone, ad reward, Gems purchase). */
   toast: null,
@@ -83,7 +83,7 @@ export const useGame = create((set, get) => ({
       roll: null,
       pendingWins: 0,
       rollResult: roll
-        ? { wins: roll.wins, prize: roll.prize, distance: roll.distance, blocked: roll.blocked, best: roll.best, prevBest: roll.prevBest, floor: roll.floor, id: Date.now() }
+        ? { wins: roll.wins, prize: roll.prize, distance: roll.distance, blocked: roll.blocked, best: roll.best, id: Date.now() }
         : null,
     })
   },
