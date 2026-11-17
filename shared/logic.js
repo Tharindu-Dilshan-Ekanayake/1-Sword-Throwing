@@ -1,10 +1,10 @@
 import {
   AD_REWARDS,
   BADGES,
+  BALLS,
   DAILY_INTERVAL_MS,
   dayNumber,
   DAILY_REWARDS,
-  DROP_ROOF,
   EGGS,
   FREE_REWARD,
   GEM_PRODUCTS,
@@ -33,6 +33,7 @@ import {
   rollDuration,
   SHOP,
   streakMultiplier,
+  swordWins,
   TIRES,
   TRAIN_INTERVAL,
   TROPHY_FIRST,
@@ -71,6 +72,9 @@ export function createProfile(id, name) {
     level: 1,
     equippedTire: 'bicycle',
     ownedTires: ['bicycle'],
+    /** Your sword's enchantment (BALLS id: the template's balls), and every one you've bought. */
+    equippedBall: 'plain',
+    ownedBalls: ['plain'],
     pets: [],
     equippedPets: [],
     nextPetUid: 1,
@@ -145,6 +149,9 @@ export function normalizeProfile(raw, id, name) {
   const owned = Array.isArray(raw.ownedTires) ? raw.ownedTires.filter((tireId) => tireIndex(tireId) >= 0) : []
   p.ownedTires = owned.length ? owned : ['bicycle']
   if (!p.ownedTires.includes(p.equippedTire)) p.equippedTire = p.ownedTires[0]
+  const balls = Array.isArray(raw.ownedBalls) ? raw.ownedBalls.filter((ballId) => ballIndex(ballId) >= 0) : []
+  p.ownedBalls = balls.length ? [...new Set(balls)] : ['plain']
+  if (!p.ownedBalls.includes(p.equippedBall)) p.equippedBall = p.ownedBalls[0]
   p.stats.bestZone = Math.min(ZONES.length - 1, Math.max(0, Math.floor(p.stats.bestZone) || 0))
   p.stats.bestZone2 = Math.min(ZONES.length - 1, Math.max(0, Math.floor(p.stats.bestZone2) || 0))
   p.world2Unlocked = raw.world2Unlocked === true
@@ -167,11 +174,13 @@ export function createSession(now) {
 
 export const tireIndex = (id) => TIRES.findIndex((t) => t.id === id)
 export const tireById = (id) => TIRES.find((t) => t.id === id) || TIRES[0]
+export const ballIndex = (id) => BALLS.findIndex((b) => b.id === id)
+export const ballById = (id) => BALLS.find((b) => b.id === id) || BALLS[0]
 
 export function isPadUnlocked(profile, index) {
   const pad = PADS[index]
   if (!pad) return false
-  // A world's own throw pad works in that world only.
+  // A world's own treadmill runs in that world only.
   if (pad.world !== undefined && (profile.world || 0) !== pad.world) return false
   if (pad.product) return Boolean(profile.passes[pad.product])
   return profile.rebirths >= pad.rebirths
@@ -251,7 +260,7 @@ export function winsMultiplier(profile, now) {
   return (profile.passes.winsX2 ? 2 : 1) * (isBoostActive(profile, 'wins', now) ? 2 : 1) * streakMultiplier(streakDays(profile, now))
 }
 
-/** Palm Beach's Secret Star, once found: x2 Power for good, in every world. */
+/** Dragonfire Peaks' Secret Star, once found: x2 Power for good, in every world. */
 export const starMultiplier = (profile) => (profile.secretStars?.world2 ? SECRET_STAR.power : 1)
 
 /** Everything that multiplies a Health gain except the tire and where you earn it. */
@@ -272,7 +281,7 @@ export function padGain(profile, index, now) {
 // --- Training, levels, rebirth ------------------------------------------------------
 
 /**
- * Banks a throw's gain and the levels it reaches. Once you're
+ * Banks a natural gain (pad, rolling or walking) and the levels it reaches. Once you're
  * at max level natural gains stop: rebirth to keep going. Returns what was really added.
  */
 function addHealth(profile, gain) {
@@ -295,10 +304,13 @@ export function applyTrain(profile, index, now) {
   return { ok: true, ...addHealth(profile, padGain(profile, index, now)) }
 }
 
-/** One throw of your phone anywhere but a throw pad: your phone's own gain. */
-export function applyThrow(profile, now) {
+/** One tick of Power while your sword flies. */
+export function applyRollTick(profile, now) {
   return { ok: true, ...addHealth(profile, baseGain(profile, now)) }
 }
+
+/** One click slash with your sword: the same gain as a throw's tick. */
+export const applyClickSwing = applyRollTick
 
 /** Rebirth: +1 rebirth; Health and levels reset (Wins, tires and pets stay). */
 export function applyRebirth(profile) {
@@ -344,14 +356,12 @@ export function zoneIndexAt(meter) {
 }
 
 /**
- * How deep a drop with `health` (Skill) smashes: its full reach. `broken` is how many
- * floors it smashed into past the first (the name stayed from the template's walls);
- * `blocked` is always -1.
+ * Where a throw with `health` (Power) lands: its full reach - nothing on the road stops
+ * it. `broken` is how many stages it flew into past the first (the name stayed from the
+ * template's walls); `blocked` is always -1.
  */
 export function rollOutcome(health, reachFactor = 1) {
-  // The throw scales the depth under the glass roof, never the fall above it: every drop
-  // still reaches the roof and smashes into the hotel.
-  const reach = DROP_ROOF + (rollReach(health) - DROP_ROOF) * reachFactor
+  const reach = rollReach(health) * reachFactor
   let broken = 0
   for (let i = 1; i < ZONES.length && ZONES[i].start <= reach; i += 1) broken += 1
   return { distance: reach, blocked: -1, broken, reach }
@@ -368,9 +378,9 @@ export function trophiesWithin(distance) {
 export const trophyValue = (meter, world = 0) => Math.max(1, Math.round(zonesOf(world)[zoneIndexAt(meter)].winsPerMeter * TROPHY_METERS))
 
 /**
- * Wins for a kick in `world` before multipliers: every yard flown, at its stage's rate
- * (further out pays more per yard), plus the trophies passed. (All worlds' stages start
- * at the same yards; only what they pay differs.)
+ * Wins for a throw in `world` before multipliers: every metre flown, at its stage's rate
+ * (further out pays more per metre), plus the trophies passed. (All worlds' stages start
+ * at the same metres; only what they pay differs.)
  */
 export function baseRollWins(distance, world = 0) {
   const zones = zonesOf(world)
@@ -389,23 +399,25 @@ export function baseRollWins(distance, world = 0) {
 export const rollWinsAt = (health, world = 0) => baseRollWins(rollOutcome(health).distance, world)
 
 /**
- * A kick down the field. Health is not consumed. Returns everything the client needs
- * to replay it locally: distance, duration, the wall that stopped it, the Wins earned
- * (trophy positions follow from the distance) and any zone reached for the first time.
- * `accuracy` is where the timing meter was stopped (0-1, see HIT_GRADES): its grade
- * decides how far the ball flies (hitReach: half as far for a WEAK kick, half as far
- * again for a PERFECT one) and multiplies the Wins (`bonus`). The Wins are what the
- * kick's Power is worth - the yards a plain kick would fly - times that bonus, never
- * the extra yards themselves: further out every yard pays more, so paying for them
- * would multiply a PERFECT kick's Wins dozens of times over late in the game. Without
- * the meter (Auto Kick) the kick is a plain x1 kick.
+ * A throw from a throw spot. Power is not consumed. Returns everything the client needs
+ * to replay it locally: distance, duration, the Wins earned (trophy positions follow from
+ * the distance) and any stage reached for the first time. `accuracy` is where the throw
+ * meter stood when you let go (0-1, see HIT_GRADES): its grade decides how far the sword
+ * flies (hitReach: half as far for a WEAK throw, half as far again for a PERFECT one) and
+ * multiplies the Wins (`bonus`). Your enchantment (BALLS) throws further and pays more on
+ * top. The Wins are what the throw's Power is worth - the metres a plain throw would fly -
+ * times those bonuses, never the extra metres themselves: further out every metre pays
+ * more, so paying for them would multiply a PERFECT throw's Wins dozens of times over late
+ * in the game. Without the meter (Auto Throw) the throw is a plain x1 throw.
  */
 export function applyRoll(profile, now, accuracy = null, bonus = 1) {
-  const outcome = rollOutcome(profile.health, hitReach(accuracy))
+  const ball = ballById(profile.equippedBall)
+  const outcome = rollOutcome(profile.health, hitReach(accuracy) * ball.reach)
   const distance = Math.round(outcome.distance * 10) / 10
   const grade = hitGrade(accuracy)
   // `bonus`: the session's own multipliers (a PERFECT combo, friends in the server).
-  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1)
+  // A Legend sword pays more on every throw too (swordWins).
+  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * ball.wins * swordWins(profile.equippedTire)
   const world = profile.world
   const worth = Math.round(rollReach(profile.health) * 10) / 10
   const wins = Math.max(1, Math.round(baseRollWins(worth, world) * multiplier))
@@ -436,6 +448,7 @@ export function applyRoll(profile, now, accuracy = null, bonus = 1) {
     broken: outcome.broken,
     multiplier,
     hit: grade ? grade.id : null,
+    ballId: ball.id,
     best,
     duration,
     cooldown: duration + ROLL_RECOVERY,
@@ -519,9 +532,9 @@ export function skipRebirth(profile) {
 // --- Worlds -------------------------------------------------------------------------
 
 /**
- * Steps through the world portal: from World 1 into Palm Beach (opening it for good the
- * first time you have the rebirths and hold the Wins - they aren't spent), or from Palm
- * Beach back home.
+ * Steps through the world portal: from World 1 into Dragonfire Peaks (opening it for good the
+ * first time you have the rebirths and hold the Wins - they aren't spent), or from Lava
+ * Land back home.
  */
 export function usePortal(profile) {
   if (profile.world === 1) {
@@ -541,7 +554,7 @@ export function usePortal(profile) {
 
 export function buyTire(profile, tireId) {
   const tire = TIRES.find((t) => t.id === tireId)
-  if (!tire) return { ok: false, error: 'Unknown arms' }
+  if (!tire) return { ok: false, error: 'Unknown sword' }
   if (profile.ownedTires.includes(tireId)) return equipTire(profile, tireId)
   const previous = TIRES[tireIndex(tireId) - 1]
   if (previous && !profile.ownedTires.includes(previous.id)) {
@@ -555,7 +568,7 @@ export function buyTire(profile, tireId) {
 }
 
 export function equipTire(profile, tireId) {
-  if (!profile.ownedTires.includes(tireId)) return { ok: false, error: 'You don’t own those arms' }
+  if (!profile.ownedTires.includes(tireId)) return { ok: false, error: 'You don’t own that sword' }
   profile.equippedTire = tireId
   return { ok: true, equipped: true, tireId }
 }
@@ -563,6 +576,33 @@ export function equipTire(profile, tireId) {
 /** The next tire in the showroom you don't have yet, or null. */
 export function nextTire(profile) {
   return TIRES.find((t) => !profile.ownedTires.includes(t.id)) || null
+}
+
+// --- Balls --------------------------------------------------------------------------
+
+/** Buys enchantment `ballId` (in order: the one before it first) and equips it; equips one you own. */
+export function buyBall(profile, ballId) {
+  const ball = BALLS.find((b) => b.id === ballId)
+  if (!ball) return { ok: false, error: 'Unknown enchantment' }
+  if (profile.ownedBalls.includes(ballId)) return equipBall(profile, ballId)
+  const previous = BALLS[ballIndex(ballId) - 1]
+  if (previous && !profile.ownedBalls.includes(previous.id)) return { ok: false, error: `Buy the ${previous.name} first!` }
+  if (profile.wins < ball.cost) return { ok: false, error: 'Not enough Wins!' }
+  profile.wins -= ball.cost
+  profile.ownedBalls.push(ballId)
+  profile.equippedBall = ballId
+  return { ok: true, bought: true, ballId }
+}
+
+export function equipBall(profile, ballId) {
+  if (!profile.ownedBalls.includes(ballId)) return { ok: false, error: 'You don’t own that enchantment' }
+  profile.equippedBall = ballId
+  return { ok: true, equipped: true, ballId }
+}
+
+/** The next enchantment at the Enchant Altar you don't have yet, or null. */
+export function nextBall(profile) {
+  return BALLS.find((b) => !profile.ownedBalls.includes(b.id)) || null
 }
 
 // --- Pets --------------------------------------------------------------------------
@@ -594,7 +634,7 @@ export function hatchEgg(profile, eggId, count = 1, { paid = 'wins', rand = Math
   const egg = EGGS[eggId]
   if (!egg) return { ok: false, error: 'Unknown egg' }
   // A world's own egg hatches in that world only (eggs from rewards included).
-  if (egg.world !== undefined && (profile.world || 0) !== egg.world) return { ok: false, error: 'Hatches in Palm Beach only!' }
+  if (egg.world !== undefined && (profile.world || 0) !== egg.world) return { ok: false, error: 'Hatches in Dragonfire Peaks only!' }
   if (profile.pets.length + count > MAX_PET_INVENTORY) return { ok: false, error: 'Pet inventory full!' }
   if (paid === 'wins') {
     if (!egg.cost.wins) return { ok: false, error: 'This egg is premium only' }
@@ -831,7 +871,7 @@ export function advanceTutorial(profile, event) {
 
 /** Awards a badge once. Returns the badge if newly awarded. */
 /**
- * Finds Palm Beach's Secret Star (the caller checks the player is at it, in Palm Beach).
+ * Finds Dragonfire Peaks' Secret Star (the caller checks the player is at it, in Dragonfire Peaks).
  * Once only; false if it was already found.
  */
 export function claimSecretStar(profile) {

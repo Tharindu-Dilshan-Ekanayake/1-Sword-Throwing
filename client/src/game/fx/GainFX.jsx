@@ -15,7 +15,7 @@ const HEART_ICON = iconUrl('heart')
 const LEVEL_GRADIENT = 'linear-gradient(180deg, #e0faff 0%, #7fe2ff 45%, #2fa8ff 100%)'
 const ROLLING_GAIN = { iconUrl: HEART_ICON }
 
-/** One throw's Skill popping up by you. */
+/** One gain's popup by wherever you're watching: on a pad, walking, or your rolling tire. */
 function showGain(event) {
   const rolling = roll.active
   const at = rolling ? roll.position : runtime.player.position

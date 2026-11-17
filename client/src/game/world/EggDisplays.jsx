@@ -13,7 +13,7 @@ import {
 
 import { EGG_STANDS } from '@shared/world'
 
-import { getQuality } from '../../store/quality'
+import { getQuality, useQuality } from '../../store/quality'
 import { EGG_COLORS } from '../../ui/icons'
 import { createGlowInstances, disposeGlow, glowTime } from '../glow'
 import { eggHeight } from './eggs'
@@ -28,8 +28,8 @@ const EGG_LOOKS = {
   sunset: { pattern: 2, glow: '#ffb347' },
   unicorn: { pattern: 3, glow: '#ffb0f0' },
   volcano: { pattern: 4, glow: '#ff6a14' },
-  // Palm Beach: sandy white, blue waves rolling round it, seashell spots.
-  beach: { pattern: 5, glow: '#5fe6ff', base: '#fff3dc', spot: '#2fb8e0', dark: '#ff8a7a' },
+  // Dragonfire Peaks' Lava Egg: black obsidian, waves of molten orange rolling round it, golden sparks.
+  beach: { pattern: 5, glow: '#ff5a14', base: '#2a1a1c', spot: '#ff6a14', dark: '#ffd21f' },
 }
 
 const vertexHead = /* glsl */ `
@@ -176,7 +176,9 @@ export function EggDisplays() {
 
   const assets = useMemo(() => {
     const count = EGG_STANDS.length
-    const geometry = new SphereGeometry(1, 28, 20)
+    // Fewer facets on LOW (a third of the triangles): the shells still read round at lobby distance.
+    const low = useQuality.getState().level === 'LOW'
+    const geometry = low ? new SphereGeometry(1, 16, 12) : new SphereGeometry(1, 28, 20)
     const spot = new InstancedBufferAttribute(new Float32Array(count * 3), 3)
     const dark = new InstancedBufferAttribute(new Float32Array(count * 3), 3)
     const pattern = new InstancedBufferAttribute(new Float32Array(count), 1)

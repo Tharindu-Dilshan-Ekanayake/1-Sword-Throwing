@@ -1,5 +1,5 @@
 import { isPadUnlocked } from '@shared/logic'
-import { eggStandNear, FREE_REWARD, inRollZone, PAD_COUNT, padAt, padRect, portalAt, SPHINX_STAND, standAt, STAR } from '@shared/world'
+import { atSwordCounter, eggStandNear, FREE_REWARD, inRollZone, nearBallShop, PAD_COUNT, padAt, padRect, portalAt, SPHINX_STAND, STAR } from '@shared/world'
 
 import { sfx } from '../audio/sfx'
 import { actions } from '../net/actions'
@@ -16,8 +16,9 @@ function sameZone(a, b) {
     a.padNear === b.padNear &&
     a.sphinx === b.sphinx &&
     a.rollZone === b.rollZone &&
-    a.atPosts === b.atPosts &&
-    a.stand === b.stand &&
+    a.atPlate === b.atPlate &&
+    a.ballShop === b.ballShop &&
+    a.swordCounter === b.swordCounter &&
     a.egg === b.egg &&
     a.portal === b.portal &&
     a.freeReward === b.freeReward
@@ -70,14 +71,17 @@ export function startGameTicker() {
       padNear: padAt(p.x, p.z, 1.8),
       sphinx: Math.hypot(p.x - SPHINX_STAND.x, p.z - SPHINX_STAND.z) < 5.5,
       rollZone: inRollZone(p.x, p.z),
-      // In the DROP ZONE: the DROP button shows (the template's name).
-      atPosts: inRollZone(p.x, p.z),
-      stand: standAt(p.x, p.z),
+      // At home plate: close enough to step up and bat.
+      atPlate: inRollZone(p.x, p.z, 1.5),
+      // At the Ball Shop's counter (its panel opens).
+      ballShop: nearBallShop(p.x, p.z),
+      // On the Sword Counter's dais (it sells your next sword).
+      swordCounter: atSwordCounter(p.x, p.z),
       egg: egg ? egg.eggId : null,
       portal: portalAt(p.x, p.z)?.id ?? null,
       freeReward: Math.hypot(p.x - FREE_REWARD.x, p.z - FREE_REWARD.z) < FREE_REWARD.radius,
     }
-    // Palm Beach's Secret Star: walking into it picks it up (asked at most once a second).
+    // Lava Land's Secret Star: walking into it picks it up (asked at most once a second).
     const { profile } = game
     if (profile.world === 1 && !profile.secretStars?.world2 && Math.hypot(p.x - STAR.x, p.z - STAR.z) < STAR.radius) {
       const now = performance.now()

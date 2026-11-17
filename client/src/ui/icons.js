@@ -143,8 +143,8 @@ const star = svg(
 )
 
 /**
- * Skill (the code's `health`): a chunky lightning bolt, glossy yellow with a white shine.
- * Still named `heart`, so every place that showed Health shows Skill.
+ * Power (the code's `health`): a chunky lightning bolt, glossy yellow with a white shine.
+ * Still named `heart`, so every place that showed Health shows Power.
  */
 const heart = svg(
   `<path d="M58 6L18 56h24l-8 38 48-54H56z" fill="url(#ht-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
@@ -157,29 +157,44 @@ const heart = svg(
 )
 
 /**
- * A phone, tipped over and falling, its screen cracked, with speed marks behind it - in a
- * thick ink outline. Still named `tire`, so every place that showed the template's tire
- * (the DROP button, the shop, the passes, the loading screen) shows the phone.
+ * A sword (the game's `bat` icon, kept for the template's callers): a broad steel blade
+ * with a bright edge and a fuller, a gold crossguard, a blue wrapped grip and a gem
+ * pommel, tilted for action, with speed streaks behind it.
  */
-const tire = svg(
-  `<g transform="rotate(-24 52 50)">
-    <rect x="30" y="10" width="44" height="80" rx="10" fill="url(#ph-c)" stroke="${OUT}" stroke-width="6"/>
-    <rect x="36" y="18" width="32" height="62" rx="4" fill="url(#ph-s)" stroke="${OUT}" stroke-width="3"/>
-    <rect x="45" y="13" width="14" height="3.5" rx="1.75" fill="${OUT}"/>
-    <path d="M58 30l-6 12 8 6-10 14M52 42l-10 4M60 48l6 10" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M40 24q4-4 10-4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+const SWORD_BLADE = 'M50 6 L59 18 L59 66 L41 66 L41 18 Z'
+const bat = svg(
+  `<g transform="rotate(38 50 50)">
+    <path d="${SWORD_BLADE}" fill="none" stroke="${OUT}" stroke-width="10" stroke-linejoin="round"/>
+    <path d="${SWORD_BLADE}" fill="url(#bt-s)"/>
+    <path d="M50 10 L50 64" stroke="#8fa2bf" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M45 20 L45 62" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+    <rect x="30" y="64" width="40" height="9" rx="4" fill="url(#bt-g)" stroke="${OUT}" stroke-width="5"/>
+    <rect x="45" y="72" width="10" height="15" rx="3" fill="#2f5fd0" stroke="${OUT}" stroke-width="4.5"/>
+    <path d="M45.5 76.5h9M45.5 81h9" stroke="#8fb8ff" stroke-width="2"/>
+    <circle cx="50" cy="91" r="5.5" fill="#ff3b5c" stroke="${OUT}" stroke-width="4"/>
+    <circle cx="48.5" cy="89.5" r="1.6" fill="#fff"/>
   </g>
-  <path d="M8 34l14 4M6 50l14 1M10 66l13-3" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-  <path d="M8 34l14 4M6 50l14 1M10 66l13-3" stroke="${OUT}" stroke-width="1.6" stroke-linecap="round" opacity=".5"/>`,
-  vgrad('ph-c', [
-    [0, '#6aa8ff'],
-    [1, '#2a4fd8'],
-  ]) +
-    vgrad('ph-s', [
-      [0, '#bff6ff'],
-      [0.5, '#5fd6ff'],
-      [1, '#3a6bff'],
-    ]),
+  <path d="M10 66l14-4M6 54l13 1M14 78l11-8" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M10 66l14-4M6 54l13 1M14 78l11-8" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>`,
+  vgrad('bt-s', [
+    [0, '#ffffff'],
+    [0.5, '#d6e2f2'],
+    [1, '#9aaac2'],
+  ]) + vgrad('bt-g', GOLD),
+)
+
+/**
+ * An enchantment orb (the game's `ball` icon, kept for the template's callers): a glowing
+ * violet orb swirling with light, a bright core and sparkles round it, in the thick ink
+ * outline.
+ */
+const ball = svg(
+  `<circle cx="50" cy="52" r="38" fill="url(#bl-g)" stroke="${OUT}" stroke-width="6"/>
+  <path d="M26 58c8 10 26 14 40 4M30 40c10-8 26-8 36 2" fill="none" stroke="#e6c8ff" stroke-width="4" stroke-linecap="round" opacity=".75"/>
+  <circle cx="50" cy="52" r="10" fill="#ffffff" opacity=".9"/>
+  <path d="M28 36c3-8 9-13 17-15" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M84 16l3 7 7 3-7 3-3 7-3-7-7-3 7-3zM14 70l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#fff6a3" stroke="${OUT}" stroke-width="2.5" stroke-linejoin="round"/>`,
+  `<radialGradient id="bl-g" cx=".5" cy=".55" r=".6"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#d29bff"/><stop offset=".8" stop-color="#7a3cff"/><stop offset="1" stop-color="#3a1680"/></radialGradient>`,
 )
 
 /** A round potion flask with a cork, filled with `liquid` and a small badge icon. */
@@ -330,7 +345,10 @@ export const ICON_SVGS = {
   star,
   settings,
   heart,
-  tire,
+  bat,
+  // The template's name for the item you upgrade: everything that asks for it gets the bat.
+  tire: bat,
+  ball,
   potionWins,
   potionHealth,
   close,
@@ -346,8 +364,8 @@ export const EGG_COLORS = {
   sunset: ['#ffc07a', '#ff6a3d', '#ffe2b8'],
   unicorn: ['#f6eaff', '#d3b4ff', '#ffd1f0'],
   volcano: ['#5a3a30', '#2a1814', '#ff6a14'],
-  // Sandy shell with blue waves, like the 3D Beach Egg (EggDisplays).
-  beach: ['#fff3dc', '#2fb8e0', '#bff4ff'],
+  // Lava Land's Lava Egg (id 'beach'): molten orange shell with glowing yellow spots.
+  beach: ['#ffb03a', '#d8320c', '#fff06a'],
 }
 
 const urlCache = new Map()

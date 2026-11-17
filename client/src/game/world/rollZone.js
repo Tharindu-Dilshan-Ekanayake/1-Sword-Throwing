@@ -1,129 +1,100 @@
-import { CylinderGeometry, SphereGeometry } from 'three'
+import { CylinderGeometry, OctahedronGeometry } from 'three'
 
-import { DROP_SPOT, ROLL_ARCH, ROLL_ZONE } from '@shared/world'
+import { STAGE_TOWERS, THROW_STAGE } from '@shared/world'
 
 import { STYLE } from '../materials'
-import { addPhone } from '../phoneStyles'
 import { venueOf } from '../sceneStyle'
+import { banner, brazier, localBox, wallTorch } from './heraldry'
 
-/** The DROP ZONE strip: the one gameplay yellow, the same in every world. */
-const STRIP = '#ffd21f'
-const RAIL = '#ffffff'
+const ROOF = new CylinderGeometry(0, 1, 1, 4)
+const GEM = new OctahedronGeometry(1, 0)
 
-const DISC = new CylinderGeometry(1, 1, 1, 28)
-const BALL = new SphereGeometry(1, 16, 12)
-
-/** Height of the arch's beam, and the sign hung on its face. */
-const ARCH_TOP = 11
-export const ARCH_SIGN = { width: 12, height: 3, y: ARCH_TOP - 1.6, faceZ: ROLL_ARCH.z + 1.05 }
-
-/** A lightning bolt in three slanted bars, on the arch's face at (x, y). */
-function addBolt(blocks, x, y, z, flip, color) {
-  blocks.add(x + 0.35 * flip, y + 0.75, z, 0.7, 0.2, 0.18, color, STYLE.GLOW, 0, 0, 0.9 * flip)
-  blocks.add(x, y, z, 1.4, 0.2, 0.18, color, STYLE.GLOW, 0, 0, 0)
-  blocks.add(x - 0.35 * flip, y - 0.75, z, 0.7, 0.2, 0.18, color, STYLE.GLOW, 0, 0, 0.9 * flip)
-}
+/** Where the stage's front steps start (the deck runs from the north edge to here). */
+export const STEPS_Z = THROW_STAGE.maxZ - 1.2
+/** The flag towers: shaft size and height, and their "THROW STAGE" boards (lettering: signs.js). */
+const TOWER = { size: 2.1, height: 12.6, plinth: 3.0 }
+export const TOWER_SIGN = { y: 7.2, width: 4.6, height: 1.4, out: TOWER.size / 2 + 0.12 }
+/** Each tower's sign's lettering face (south, towards spawn): where its quad goes. */
+export const towerSignAt = (tower) => ({ x: tower.x, y: TOWER_SIGN.y, z: tower.z + TOWER_SIGN.out + 0.21 })
+/** The stage top's painted arrow and runes (a decal: signs.js): its middle and width. */
+export const STAGE_DECAL = { x: 0, z: (THROW_STAGE.minZ + STEPS_Z) / 2, width: 15 }
 
 /**
- * The DROP ZONE at the cliff edge: the yellow strip across the end of the plaza (painted
- * with its name, see signs.js) with navy chevrons pointing out over the edge, a glowing
- * pad at each end, a railing along the edge with a gap in the middle where a little
- * platform juts out over the drop (the spot you throw from, DROP_SPOT), and a big
- * yellow-and-navy arch over it all with its sign between lightning bolts, crowned by a
- * giant phone - in the venue's colours (turquoise and teal with coral at Palm Beach); the
- * strip itself is the same yellow everywhere.
+ * The THROW STAGE at the valley's mouth (the template's launch pad): one wide raised stone
+ * stage filling THROW_STAGE, its top at its height - stand anywhere on it and throw. A dark
+ * plinth, a recessed body under a cornice, a pale deck with a border of darker stones round
+ * its edge, a gold-lit band along its front over the road, and two steps up along its
+ * south edge with gold nosings. The deck's arrow and runes are a decal (signs.js). Nothing
+ * stands on it or over it, or over the road.
  *
- * Boxes go into the world's block set and the round parts into its props, so the whole
- * thing rides in those two draw calls. `detail` (off on LOW) adds the bulbs.
+ * Off either end stands a flag tower (STAGE_TOWERS, inside its collider): a slim stone
+ * shaft, a crenellated top, a tall pole with the academy's flag streaming away from the
+ * stage, a THROW STAGE board on its south face (towards spawn), a banner down the face
+ * turned to the stage, torches, and braziers on its plinth's stage-side corners.
  *
- * No two faces here share a plane: every layer stands a clear step proud of what it
- * sits on (flush faces flicker, worst on phones' coarser depth buffers).
+ * Boxes go into the world's block set and the round parts into its props, so it all rides
+ * in those two draw calls. `detail` (off on LOW) adds the banners, braziers and flags. No
+ * two faces share a plane, and every piece stays inside the stage's rect or a tower's
+ * collider (nothing solid on walkable ground).
  */
 export function buildRollZone(blocks, props, { detail = true, world = 0 } = {}) {
-  const c = venueOf(world).arch
-  const { minX, maxX, minZ, maxZ } = ROLL_ZONE
-  const cx = (minX + maxX) / 2
-  const cz = (minZ + maxZ) / 2
-  const w = maxX - minX
-  const d = maxZ - minZ
+  const v = venueOf(world)
+  const c = v.castle
+  const s = THROW_STAGE
+  const w = s.maxX - s.minX
+  const cx = (s.minX + s.maxX) / 2
+  const h = s.height
+  const deckD = STEPS_Z - s.minZ
+  const deckZ = (s.minZ + STEPS_Z) / 2
+  // The deck: plinth, recessed body, the cornice slab whose top is the stage's floor.
+  blocks.addOn(cx, 0, deckZ, w, 0.25, deckD, c.dark, STYLE.STUDS)
+  blocks.addOn(cx, 0.25, deckZ, w - 0.24, h - 0.37, deckD - 0.24, c.stone[1], STYLE.STUDS)
+  blocks.addOn(cx, h - 0.12, deckZ, w, 0.12, deckD, c.cap, STYLE.STUDS)
+  // The deck's border: darker stones round its north, east and west edges, a hair proud.
+  const b = 0.7
+  blocks.addOn(cx, h, s.minZ + b / 2, w, 0.04, b, c.stone[2], STYLE.STUDS)
+  for (const side of [-1, 1]) blocks.addOn(cx + side * (w / 2 - b / 2), h, deckZ + b / 2, b, 0.04, deckD - b, c.stone[2], STYLE.STUDS)
+  // The gold-lit band along its front, over the road.
+  blocks.add(cx, h * 0.55, s.minZ - 0.03, w - 0.4, 0.14, 0.06, c.trim, STYLE.GLOW)
+  // The steps up along the south edge, gold nosings on their fronts.
+  const stepD = (s.maxZ - STEPS_Z) / 2
+  blocks.addOn(cx, 0, STEPS_Z + stepD / 2, w, (h * 2) / 3, stepD, c.stone[0], STYLE.STUDS)
+  blocks.addOn(cx, 0, s.maxZ - stepD / 2, w, h / 3, stepD, c.stone[0], STYLE.STUDS)
+  blocks.addOn(cx, (h * 2) / 3, STEPS_Z + stepD - 0.08, w - 0.6, 0.03, 0.14, c.trim, STYLE.GLOW)
+  blocks.addOn(cx, h / 3, s.maxZ - 0.08, w - 0.6, 0.03, 0.14, c.trim, STYLE.GLOW)
 
-  // The strip: a navy border with the yellow fill raised on it, running right up to the
-  // field's edge.
-  blocks.addOn(cx, 0, cz + 0.3, w + 1.2, 0.05, d + 0.6, c.base)
-  blocks.addOn(cx, 0.05, cz + 0.3, w, 0.05, d - 0.2, STRIP)
-  // Chevrons on the strip, pointing down the runway.
-  for (const x of [-9, 9]) {
-    for (const side of [-1, 1]) {
-      blocks.add(x + side * 0.7, 0.12, cz, 2.2, 0.04, 0.6, c.base, STYLE.SMOOTH, side * 0.75)
-    }
-  }
-  // Glowing pads at both ends.
-  for (const side of [-1, 1]) {
-    const x = side * (w / 2 + 2.2)
-    props.add(DISC, { position: [x, 0.08, cz + 0.3], scale: [2, 0.12, 2.6], color: '#ffffff' })
-    props.add(DISC, { position: [x, 0.15, cz + 0.3], scale: [1.6, 0.06, 2.2], color: STRIP, style: STYLE.GLOW })
-  }
-
-  // The cliff edge: a railing along it with a gap in the middle, and there a little
-  // platform jutting out over the drop with a glowing ring where you stand to throw.
-  const edgeZ = minZ + 0.3
-  for (const side of [-1, 1]) {
-    const from = side * 2.6
-    const to = side * (w / 2 + 3)
-    const mid = (from + to) / 2
-    const len = Math.abs(to - from)
-    blocks.addOn(mid, 0.1, edgeZ, len, 0.12, 0.5, c.base, STYLE.SMOOTH)
-    blocks.addOn(mid, 1.05, edgeZ, len, 0.16, 0.24, RAIL, STYLE.SMOOTH)
-    blocks.addOn(mid, 0.55, edgeZ, len, 0.08, 0.14, RAIL, STYLE.SMOOTH)
-    for (let x = Math.min(from, to); x <= Math.max(from, to) + 0.01; x += 2.2) blocks.addOn(x, 0.1, edgeZ, 0.22, 1.0, 0.22, RAIL, STYLE.SMOOTH)
-    blocks.addOn(from, 0.1, edgeZ, 0.5, 1.6, 0.5, STRIP, STYLE.STRIPES)
-    props.add(BALL, { position: [from, 1.95, edgeZ], scale: [0.4, 0.4, 0.4], color: c.crest, style: STYLE.GLOW })
-  }
-  blocks.addOn(DROP_SPOT.x, -0.4, minZ - 1.2, 4.6, 0.55, 3.4, c.base, STYLE.SMOOTH)
-  blocks.addOn(DROP_SPOT.x, 0.15, minZ - 1.1, 4.2, 0.06, 3.0, STRIP, STYLE.PLATE)
-  props.add(DISC, { position: [DROP_SPOT.x, 0.13, DROP_SPOT.z], scale: [1.2, 0.04, 1.2], color: '#ffffff' })
-  props.add(DISC, { position: [DROP_SPOT.x, 0.17, DROP_SPOT.z], scale: [0.95, 0.04, 0.95], color: c.crest, style: STYLE.GLOW })
-  // Arrows on the strip pointing out over the edge.
-  const ARROWS = ['#ff4a4a', '#ff9a1e', '#ffe23a']
-  for (let i = 0; i < 3; i += 1) {
-    const z = DROP_SPOT.z + 3 + i * 2.6
-    for (const side of [-1, 1]) blocks.add(DROP_SPOT.x + side * 0.6, 0.15, z, 1.6, 0.06, 0.36, ARROWS[i], STYLE.GLOW, -side * 0.75)
-  }
-
-  // The start arch: striped pillars either side, a beam across the top carrying the
-  // sign and a gold crest, and a glowing orb on each pillar.
-  const archZ = ROLL_ARCH.z
-  const span = ROLL_ARCH.x * 2
-  for (const side of [-1, 1]) {
-    const x = side * ROLL_ARCH.x
-    blocks.addOn(x, 0, archZ, 2.2, 0.8, 2.2, c.base)
-    blocks.addOn(x, 0.8, archZ, 1.6, ARCH_TOP - 0.8, 1.6, c.pillar, STYLE.STRIPES)
-    blocks.addOn(x, ARCH_TOP + 1.3, archZ, 2.1, 2.1, 2.1, c.crest, STYLE.GLOW)
+  // The flag towers off its ends.
+  STAGE_TOWERS.forEach((t, i) => {
+    const out = t.x > cx ? 1 : -1
+    const x = t.x
+    const z = t.z
+    blocks.addOn(x, 0, z, TOWER.plinth, 0.6, TOWER.plinth, c.dark, STYLE.STUDS)
+    blocks.addOn(x, 0.6, z, TOWER.size, TOWER.height - 0.6, TOWER.size, c.stone[i % 2], STYLE.STUDS)
+    for (const y of [4.2, 9.6]) blocks.add(x, y, z, TOWER.size + 0.1, 0.24, TOWER.size + 0.1, c.stone[2], STYLE.SMOOTH)
+    // Its crenellated top.
+    const top = TOWER.size + 0.6
+    blocks.addOn(x, TOWER.height, z, top, 0.4, top, c.cap, STYLE.SMOOTH)
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) blocks.addOn(x + dx * (top / 2 - 0.28), TOWER.height + 0.4, z + dz * (top / 2 - 0.28), 0.5, 0.65, 0.5, c.stone[1], STYLE.STUDS)
+    props.add(ROOF, { position: [x, TOWER.height + 0.4 + 0.9, z], rotation: [0, Math.PI / 4, 0], scale: [1.15, 1.8, 1.15], color: c.roof, style: STYLE.STUDS })
+    // The flagpole and its flag, streaming out away from the stage.
+    blocks.addOn(x, TOWER.height + 2.2, z, 0.14, 5.4, 0.14, c.dark, STYLE.SMOOTH)
+    props.add(GEM, { position: [x, TOWER.height + 7.75, z], scale: 0.3, color: c.trim, style: STYLE.GLOW })
     if (detail) {
-      for (let y = 1.8; y < ARCH_TOP - 0.6; y += 1.1) {
-        blocks.add(x, y, archZ + 0.88, 0.3, 0.3, 0.16, Math.round(y) % 2 ? '#ffffff' : c.base, STYLE.GLOW)
-      }
+      blocks.add(x + out * 1.7, TOWER.height + 6.6, z, 3.2, 1.8, 0.06, i % 2 ? c.bannerAlt : c.banner, STYLE.SMOOTH)
+      blocks.add(x + out * 1.7, TOWER.height + 6.6, z, 2.2, 0.22, 0.08, c.trim, STYLE.GLOW)
     }
-  }
-  blocks.addOn(0, ARCH_TOP - 0.2, archZ, span + 1, 1.5, 1.3, c.pillar, STYLE.STRIPES)
-  blocks.addOn(0, ARCH_TOP - 0.45, archZ, span - 1.4, 0.25, 1.4, c.glow, STYLE.GLOW)
-  blocks.addOn(0, ARCH_TOP + 1.3, archZ, span - 4, 0.3, 1, c.base, STYLE.SMOOTH)
-  // The sign: a gold-framed navy panel, lettering painted on (signs.js), a lightning bolt
-  // either side.
-  blocks.addOn(0, ARCH_SIGN.y - ARCH_SIGN.height / 2 - 0.15, archZ + 0.75, ARCH_SIGN.width + 0.6, ARCH_SIGN.height + 0.3, 0.3, c.crest)
-  blocks.addOn(0, ARCH_SIGN.y - ARCH_SIGN.height / 2, archZ + 0.8, ARCH_SIGN.width, ARCH_SIGN.height, 0.3, c.base, STYLE.SMOOTH)
-  for (const side of [-1, 1]) addBolt(blocks, side * (ARCH_SIGN.width / 2 + 2.1), ARCH_SIGN.y - ARCH_SIGN.height / 2, archZ + 0.78, side, c.crest)
-  if (detail) {
-    for (let x = -ROLL_ARCH.x + 1.5; x <= ROLL_ARCH.x - 1.49; x += 1) {
-      if (Math.abs(x) < ARCH_SIGN.width / 2 + 0.7) continue
-      blocks.add(x, ARCH_TOP + 0.95, archZ + 0.73, 0.3, 0.3, 0.16, Math.round(x) % 2 ? c.crest : '#ffffff', STYLE.GLOW)
-      blocks.add(x + 0.5, ARCH_TOP + 0.15, archZ + 0.73, 0.3, 0.3, 0.16, Math.round(x) % 2 ? '#ffffff' : c.crest, STYLE.GLOW)
+    // The THROW STAGE board on its south face, towards spawn (lettering: signs.js).
+    const sz = z + TOWER_SIGN.out
+    blocks.add(x, TOWER_SIGN.y, sz, TOWER_SIGN.width + 0.3, TOWER_SIGN.height + 0.3, 0.2, c.trim, STYLE.SMOOTH)
+    blocks.add(x, TOWER_SIGN.y, sz + 0.07, TOWER_SIGN.width, TOWER_SIGN.height, 0.2, c.banner, STYLE.SMOOTH)
+    // Torches on its south face, under the board.
+    for (const dx of [-0.55, 0.55]) wallTorch(blocks, x + dx, 3.0, z + TOWER.size / 2 + 0.01, 0, c)
+    if (detail) {
+      // The banner down the face turned to the stage.
+      banner(blocks, x - out * (TOWER.size / 2 + 0.06), 9.2, z, out > 0 ? -Math.PI / 2 : Math.PI / 2, 1.5, 4.4, c, { field: i % 2 ? c.bannerAlt : c.banner })
+      // Braziers on the plinth's stage-side corners.
+      for (const dz of [-1, 1]) brazier(blocks, x - out * 1.22, 0.6, z + dz * 1.22, c, 0.62)
     }
-  }
-
-  // The crown: a giant phone standing on the beam, tipping over the edge, a gold ring
-  // glowing behind it.
-  const baseY = ARCH_TOP + 1.4
-  addPhone(props, 'infinity', { position: [0, baseY + 3.6, archZ], rotation: [Math.PI / 2 - 0.25, 0, 0.2], scale: 7 })
-  props.add(DISC, { position: [0, baseY + 3.8, archZ - 1.4], rotation: [Math.PI / 2, 0, 0], scale: [4.6, 0.3, 4.6], color: c.crest, style: STYLE.GLOW })
+    localBox(blocks, x, TOWER.height * 0.42, z, out > 0 ? Math.PI / 2 : -Math.PI / 2, 0, 0, TOWER.size / 2 + 0.02, 0.28, 1.0, 0.06, c.window, STYLE.SMOOTH)
+  })
 }

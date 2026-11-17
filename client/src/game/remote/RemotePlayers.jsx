@@ -3,20 +3,23 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Color, Matrix4, Quaternion, Vector3 } from 'three'
 
 import { ROLL_RECOVERY } from '@shared/balance'
+import { BATTER_YAW, padAt, PAD_YAWS } from '@shared/world'
+
+import { swordBase } from '../swords'
 
 import { remotePlayers } from '../../net/remotePlayers'
 import { getQuality } from '../../store/quality'
 import { createBoxInstances, disposeBlocks } from '../blocks'
-import { TOSS_TIME } from '../practice'
+import { RUN_CADENCE } from '../kick'
 import { sharedMaterials, STYLE } from '../materials'
-import { T_RELEASE } from '../roll/dropPath'
 import { runtime } from '../runtime'
 import { hideNameplatesFrom, NAMEPLATE_POOL_SIZE, placeNameplate } from './nameplates'
 
 /** Remote players are drawn this far in the past, so 10 Hz updates interpolate. */
 const INTERP_DELAY_MS = 110
 const MAX_REMOTES = 8
-const PARTS = 6
+/** Six blocks of body and one of sword. */
+const PARTS = 7
 const S = 0.36
 
 /** Classic blocky figure, in studs-scaled units: [x, y(pivot), size, hangs from pivot]. */
@@ -53,6 +56,11 @@ const _up = new Vector3(0, 1, 0)
 const _target = new Vector3()
 const _dir = new Vector3()
 const _prev = new Vector3()
+/** The sword across a figure's back (grip over the right shoulder), held ready, and thrown. */
+const BAT_BACK = new Matrix4().compose(new Vector3(0.05, 1.15, -0.32), new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 0.75), new Vector3(0.24, 1.7, 0.06))
+const BAT_UP = new Matrix4().compose(new Vector3(-0.35, 1.9, -0.25), new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -0.9), new Vector3(0.2, 1.4, 0.05))
+const BAT_SWUNG = new Matrix4().compose(new Vector3(0.45, 1.3, 0.5), new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 1.2), new Vector3(0.2, 1.4, 0.05))
+const _batColor = new Color()
 
 function lerpAngle(a, b, t) {
   let d = b - a
@@ -80,10 +88,11 @@ function interpolate(r, renderTime) {
 
 /**
  * Writes one blocky figure's six parts from `base` (its feet), limbs swung by `swing`
- * (and arms by `armSwing`, if given, stretched `armStretch` times their length). Returns
- * the next free instance.
+ * (and arms by `armSwing`, if given, stretched `armStretch` times their length), and its
+ * bat (`bat`: BAT_BACK, BAT_UP or BAT_SWUNG) in its bat's colour. Returns the next free
+ * instance.
  */
-function writeFigure(body, instance, r, base, swing, armSwing, armStretch = 1) {
+function writeFigure(body, instance, r, base, swing, armSwing, armStretch = 1, bat = BAT_BACK) {
   const h = hashString(r.sessionId)
   const shirt = SHIRTS[h % SHIRTS.length]
   const pants = PANTS[(h >>> 8) % PANTS.length]
@@ -104,7 +113,9 @@ function writeFigure(body, instance, r, base, swing, armSwing, armStretch = 1) {
     body.setColorAt(instance, part.key === 'torso' ? shirt : part.key.startsWith('leg') ? pants : skin)
     instance += 1
   }
-  return instance
+  body.setMatrixAt(instance, _m.copy(base).multiply(bat))
+  body.setColorAt(instance, _batColor.copy(swordBase(r.tireId || 'bicycle')))
+  return instance + 1
 }
 
 /** Puts a name tag over `at`, if it's on screen; returns the next free tag. */
@@ -123,12 +134,12 @@ function writeNameplate(plate, name, at, distance, maxDistance, camera, size, ui
 }
 
 /**
- * Everyone else in the lobby: blocky avatars (one InstancedMesh for every limb of every
- * player), name tags and their pets (handed to the shared pet renderer). Also works out,
- * once a frame for everyone, what the real avatars (RemoteAvatars) need: each drop they
- * throw (`r.flying` while it plays, `r.throwT` through the throw). Winding up a throw
- * at the edge is anim 'pull'; on a throw pad they practise. Hidden past the preset's draw
- * distance.
+ * Everyone else in the lobby: blocky avatars (one InstancedMesh for every limb and bat of
+ * every player), name tags and their pets (handed to the shared pet renderer). Also works
+ * out, once a frame for everyone, what the real avatars (RemoteAvatars) need: whether
+ * they're mid-hit (`r.hitting`, `r.hitT` seconds since it started, `r.hitGrade`: their
+ * ball itself flies in roll/BallFlight) or up at bat waiting on a pitch (`r.pulling`, anim
+ * 'pull'). In a batting cage they swing. Hidden past the preset's draw distance.
  */
 export function RemotePlayers() {
   const camera = useThree((s) => s.camera)
@@ -168,24 +179,19 @@ export function RemotePlayers() {
       const moved = _prev.distanceTo(r.position)
       r.speed = r.speed * 0.8 + (moved / Math.max(delta, 1e-3)) * 0.2
 
-      // --- Their drop: the throw, replayed from the numbers the server sent ---------
+      // --- Their hit: the swing here, the ball in BallFlight ----------------------
       const ghost = runtime.ghostRolls.get(r.sessionId)
-      r.flying = false
-      r.throwT = 0
+      r.hitting = false
       if (ghost) {
         const elapsed = (now - ghost.startedAt) / 1000
         if (elapsed > ghost.duration + ROLL_RECOVERY + 1) runtime.ghostRolls.delete(r.sessionId)
         else {
-          r.flying = true
-          r.throwT = Math.min(1, Math.max(0.01, elapsed / T_RELEASE))
+          r.hitting = true
+          r.hitT = elapsed
+          r.hitGrade = ghost.hit
         }
       }
-      r.pulling = r.anim === 'pull' && !r.flying
-      // A throw for Skill: each one flips their anim between toss0 and toss1.
-      const tossAnim = r.anim === 'toss0' || r.anim === 'toss1' ? r.anim : null
-      if (tossAnim && tossAnim !== r.lastToss) r.tossAt = now
-      r.lastToss = tossAnim
-      r.tossF = r.tossAt ? (now - r.tossAt) / 1000 / TOSS_TIME : 1
+      r.pulling = r.anim === 'pull' && !r.hitting
       r.shadow.position.copy(r.position)
 
       // --- In the lobby -----------------------------------------------------------
@@ -193,19 +199,25 @@ export function RemotePlayers() {
       const distance = camera.position.distanceTo(shownAt)
       const visible = distance < settings.remoteDrawDistance
       r.shadow.visible = visible
-      const tossing = r.tossF >= 0 && r.tossF < 1
+      const running = r.anim === 'run'
 
       // Players drawn as their real avatar (RemoteAvatars) skip the blocky figure.
       if (visible && !r.fullAvatar && instance + PARTS <= MAX_REMOTES * PARTS) {
-        const walking = !tossing && r.speed > 0.6
+        const walking = !running && r.speed > 0.6
         if (walking) r.walkPhase += delta * (6 + Math.min(r.speed, 10) * 0.5)
+        // In a cage: a swing at every pitch.
+        if (running) r.walkPhase += delta * RUN_CADENCE
         const swing = walking ? Math.sin(r.walkPhase) * 0.9 : 0
-        const facingEdge = r.pulling || r.flying
-        _q.setFromAxisAngle(_up, facingEdge ? Math.PI : r.yaw)
+        const batting = r.pulling || r.hitting
+        _q.setFromAxisAngle(_up, running ? PAD_YAWS[Math.max(0, padAt(r.position.x, r.position.z, 0.8))] : batting ? BATTER_YAW : r.yaw)
         _base.compose(r.position, _q, _s.set(1, 1, 1))
-        // Arms: cocked back winding up, whipping over in the throw, or swinging along.
-        const arms = r.flying ? (r.throwT < 1 ? -3.2 + 2.6 * r.throwT : -0.3) : r.pulling ? -2.9 + Math.sin(t * 30) * 0.05 : tossing ? -1.7 - 1.3 * Math.cos(r.tossF * Math.PI * 2) : null
-        instance = writeFigure(body, instance, r, _base, swing, arms, 1)
+        // (A click swing loops too: anim 'swing'.)
+        const clicking = r.anim === 'swing'
+        if (clicking) r.walkPhase += delta * 11
+        const swung = r.hitting || ((running || clicking) && Math.sin(r.walkPhase) > 0)
+        // Arms up on the bat at the plate and in the cage; swinging against the legs walking.
+        const arms = batting || running || clicking ? (swung ? -1.2 : -2.2) : walking ? null : 0.1
+        instance = writeFigure(body, instance, r, _base, swing, arms, 1, batting || running || clicking ? (swung ? BAT_SWUNG : BAT_UP) : BAT_BACK)
       }
 
       // Name tag, just above the head (players are 1.8 tall).

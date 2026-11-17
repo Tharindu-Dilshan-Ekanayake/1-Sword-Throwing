@@ -3,7 +3,8 @@ import { test } from 'node:test'
 
 import {
   AD_REWARDS,
-  DROP_ROOF,
+  BALLS,
+  CLICK_INTERVAL,
   EGGS,
   GEM_PRODUCTS,
   healthForLevel,
@@ -14,7 +15,6 @@ import {
   rebirthGift,
   rebirthMultiplier,
   TIRES,
-  TOSS_COOLDOWN,
   TUTORIAL,
   WORLD_PORTALS,
   WORLD_ZONES,
@@ -29,10 +29,12 @@ import {
   applyRoll,
   baseRollWins,
   applyTrain,
+  buyBall,
   buyHealthPack,
   buyTire,
   createProfile,
   createSession,
+  equipBall,
   hatchEgg,
   healthPacks,
   isPadUnlocked,
@@ -46,9 +48,9 @@ import {
   usePortal,
 } from '../../shared/logic.js'
 import { PlayerSession } from '../../shared/session.js'
-import { DROP_SPOT, PAD_X, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, STAR } from '../../shared/world.js'
+import { atSwordCounter, padCenterX, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, STAR, SWORD_COUNTER, TIRE_STANDS } from '../../shared/world.js'
 
-const onPad = (i) => ({ x: PAD_X, y: 0.5, z: padCenterZ(i) })
+const onPad = (i) => ({ x: padCenterX(i), y: 0.5, z: padCenterZ(i) })
 const inRollZone = () => ({ x: 0, y: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 })
 
 /** A session for a fresh profile, recording every event it emits. */
@@ -151,23 +153,15 @@ test('skipping to a rebirth costs Wins', () => {
   assert.equal(p.health, 0)
 })
 
-// --- Dropping --------------------------------------------------------------------
+// --- Rolling ---------------------------------------------------------------------
 
-test('nothing blocks a drop: it always smashes its full reach', () => {
+test('nothing blocks a kick: it always flies its full reach', () => {
   for (const health of [0, ZONES[1].wall - 1, ZONES[1].wall, ZONES[20].wall * 3]) {
     const outcome = rollOutcome(health)
     assert.equal(outcome.blocked, -1)
     assert.equal(outcome.distance, rollReach(health))
   }
-  assert.equal(rollOutcome(ZONES[1].wall - 1).broken, 1, 'past the first floor without its pace Skill')
-})
-
-test('every drop falls to the glass roof and smashes into the first floor', () => {
-  assert.equal(ZONES[0].start, DROP_ROOF)
-  // Even the weakest throw with no Skill gets through the roof.
-  const p = createProfile('a', 'A')
-  const weakest = applyRoll(p, 0, 0)
-  assert.ok(weakest.distance > DROP_ROOF, `got ${weakest.distance}`)
+  assert.equal(rollOutcome(ZONES[1].wall - 1).broken, 1, 'past the first stage without its pace Power')
 })
 
 test('Wins grow with distance', () => {
@@ -196,7 +190,7 @@ test('rolls pay Wins without using Health; a zone prize pays only once', () => {
   assert.equal(p.stats.rolls, 2)
 })
 
-test('the throw meter decides how deep it smashes: depth and Wins', () => {
+test('the timing meter decides how hard you hit: distance and Wins', () => {
   const kick = (accuracy) => {
     const p = createProfile('a', 'A')
     p.health = ZONES[3].wall
@@ -213,11 +207,9 @@ test('the throw meter decides how deep it smashes: depth and Wins', () => {
   // Further the closer to the middle; Auto Kick flies Power's distance exactly.
   assert.equal(auto.distance, Math.round(rollReach(ZONES[3].wall) * 10) / 10)
   assert.ok(weak.distance < good.distance && good.distance < great.distance && great.distance < perfect.distance)
-  // Every grade clearly apart from the next: at least a fifth deeper under the roof each
-  // step up (the fall to the roof is the same for every throw).
-  const below = (r) => r.distance - DROP_ROOF
-  assert.ok(below(good) > below(weak) * 1.2 && below(great) > below(good) * 1.2 && below(perfect) > below(great) * 1.15)
-  assert.ok(below(perfect) > below(auto) * 1.35 && below(weak) < below(auto) * 0.65)
+  // Every grade clearly apart from the next: at least a fifth further each step up.
+  assert.ok(good.distance > weak.distance * 1.2 && great.distance > good.distance * 1.2 && perfect.distance > great.distance * 1.15)
+  assert.ok(perfect.distance > auto.distance * 1.35 && weak.distance < auto.distance * 0.65)
   // Wins: the Power's worth times the grade's bonus, whatever extra yards the grade adds.
   assert.equal(good.wins, auto.wins)
   assert.ok(weak.wins < auto.wins && great.wins > auto.wins)
@@ -245,6 +237,34 @@ test('tires are bought in order with Wins', () => {
   assert.equal(buyTire(p, 'nope').ok, false)
   p.wins = 0
   assert.equal(buyTire(p, TIRES[3].id).ok, false, 'not enough Wins')
+})
+
+test('swords are bought at the Sword Counter only, and the one bought is held', () => {
+  const pos = { x: SWORD_COUNTER.x, y: SWORD_COUNTER.height, z: SWORD_COUNTER.z }
+  const { session, profile } = makeSession(pos)
+  profile.wins = 1000
+  // Away from the counter (the open middle of the courtyard): refused.
+  pos.x = 0
+  pos.z = 14
+  session.handle('buyTire', { id: TIRES[1].id }, 0)
+  assert.equal(profile.ownedTires.includes(TIRES[1].id), false, 'not from the middle of the courtyard')
+  // Under the Sword Wall itself, but off the counter's dais: still refused.
+  pos.x = TIRE_STANDS[1].x
+  pos.z = TIRE_STANDS[1].z
+  session.handle('buyTire', { id: TIRES[1].id }, 0)
+  assert.equal(profile.ownedTires.includes(TIRES[1].id), false, 'not from under its niche')
+  // On the counter: bought and held - and still only the next one in order.
+  pos.x = SWORD_COUNTER.x + SWORD_COUNTER.half - 0.2
+  pos.z = SWORD_COUNTER.z
+  session.handle('buyTire', { id: TIRES[3].id }, 0)
+  assert.equal(profile.ownedTires.includes(TIRES[3].id), false, 'skipping ahead')
+  session.handle('buyTire', { id: TIRES[1].id }, 0)
+  assert.equal(profile.ownedTires.includes(TIRES[1].id), true)
+  assert.equal(profile.equippedTire, TIRES[1].id)
+  assert.equal(profile.wins, 1000 - TIRES[1].cost)
+  // The counter is its dais, nowhere else.
+  assert.equal(atSwordCounter(SWORD_COUNTER.x, SWORD_COUNTER.z), true)
+  assert.equal(atSwordCounter(0, 14), false)
 })
 
 test('Health packs follow your level and ignore the cap', () => {
@@ -331,54 +351,36 @@ test('only brand-new players get the tutorial', () => {
 
 // --- The session -----------------------------------------------------------------
 
-test('Skill comes only from throws: never from standing, walking or a pad by itself', () => {
-  const pos = onPad(0)
-  const { session, profile, count } = makeSession(pos)
-  session.handle('enterPad', { pad: 0 }, 0)
-  for (let t = 0; t < 20000; t += 100) {
-    pos.x = PAD_X + Math.sin(t / 700) * 30
-    session.tick(0.1, t)
-  }
-  assert.equal(profile.health, 0, 'walking about and standing on a pad earn nothing')
-  assert.equal(count('train'), 0)
-})
-
-test('each throw pays: the pad bonus only on the pad you really stand on, at most one per cooldown', () => {
+test('training only counts on the pad the player really stands on', () => {
   const pos = { x: SPAWN.x, y: 0, z: SPAWN.z }
-  const { session, profile, events } = makeSession(pos)
-  session.handle('toss', {}, 1000)
-  const off = events.filter((e) => e.type === 'train')
-  assert.equal(off.length, 1)
-  assert.equal(off[0].payload.source, 'throw')
-  assert.ok(profile.health > 0)
-  session.handle('toss', {}, 1000 + TOSS_COOLDOWN * 500)
-  assert.equal(events.filter((e) => e.type === 'train').length, 1, 'too soon after the last throw')
-  // Claiming a pad from spawn pays no pad bonus.
-  session.handle('enterPad', { pad: 0 }, 2000)
-  session.handle('toss', {}, 3000)
-  assert.equal(events.at(-1).payload.source, 'throw', 'claimed a pad from spawn')
+  const { session, profile } = makeSession(pos)
+  session.handle('enterPad', { pad: 0 }, 0)
+  session.tick(0.1, 0)
+  session.tick(2, 0)
+  assert.equal(profile.health, 0, 'claimed a pad from spawn')
   Object.assign(pos, onPad(0))
-  session.handle('toss', {}, 4000)
-  assert.equal(events.at(-1).payload.source, 'pad')
-  assert.equal(events.at(-1).payload.pad, 0)
-  session.handle('enterPad', { pad: 1 }, 5000)
+  session.tick(0.1, 0)
+  session.tick(2, 0)
+  assert.ok(profile.health > 0)
+  session.handle('enterPad', { pad: 1 }, 0)
   assert.equal(session.pad, 0, 'a locked pad cannot be entered')
 })
 
-test('the first guide step completes once throws bring Skill to 30', () => {
+test('the first guide step completes in the cage once Power reaches 12', () => {
   assert.equal(TUTORIAL[0].event, 'train')
-  assert.equal(TUTORIAL[0].health, 30)
+  const target = TUTORIAL[0].health
+  assert.equal(target, 12)
   const pos = onPad(0)
   const { session, profile } = makeSession(pos)
   session.handle('enterPad', { pad: 0 }, 0)
   let t = 0
-  while (profile.health < 29) session.handle('toss', {}, (t += 1000))
+  while (profile.health < target - 1) session.tick(0.1, (t += 100))
   assert.equal(profile.tutorialStep, 0)
-  while (profile.health < 30) session.handle('toss', {}, (t += 1000))
+  while (profile.health < target) session.tick(0.1, (t += 100))
   assert.equal(profile.tutorialStep, 1)
 })
 
-test('drops start only from the drop zone, one at a time', () => {
+test('rolls start only from the roll zone, one at a time', () => {
   const pos = { x: SPAWN.x, y: 0, z: SPAWN.z }
   const { session, profile, count } = makeSession(pos)
   session.handle('roll', {}, 1000)
@@ -388,10 +390,9 @@ test('drops start only from the drop zone, one at a time', () => {
   assert.equal(count('roll'), 1)
   session.handle('roll', {}, 1500)
   assert.equal(count('roll'), 1, 'no second roll while the tire is out')
-  // No Skill while the phone falls, and no throwing either.
+  // Health ticks in while the tire rolls.
   for (let t = 1100; t < 4000; t += 100) session.tick(0.1, t)
-  session.handle('toss', {}, 2000)
-  assert.equal(profile.health, 0, `got ${profile.health}`)
+  assert.ok(profile.health >= 2, `got ${profile.health}`)
   session.handle('roll', {}, 1000 + session.busyUntil)
   assert.equal(count('roll'), 2, 'rolls again once the cooldown is over')
   assert.equal(profile.stats.rolls, 2)
@@ -563,20 +564,97 @@ test("Palm Beach's Secret Star: found once, there only, for x2 Power everywhere"
   assert.equal(far.count('star'), 0)
 })
 
-// --- The drop zone ---------------------------------------------------------------
+// --- Click swings ------------------------------------------------------------------------
 
-test('throwing from the edge pays the same as anywhere in the drop zone: no stretch bonus', () => {
-  const dropFrom = (pos) => {
-    const profile = createProfile('a', 'A')
-    profile.health = 5000
-    const { session, events } = makeSession(pos, profile)
-    session.handle('roll', { accuracy: 0.5 }, 1000)
-    return events.find((e) => e.type === 'roll')?.payload
+test('walking earns no Power; clicking swings do, one every CLICK_INTERVAL at most', () => {
+  const pos = { x: 0, y: 0, z: 40 }
+  const { session, profile, events } = makeSession(pos)
+  // A long walk round the lobby: nothing.
+  let t = 0
+  for (let i = 0; i < 100; i += 1) {
+    pos.x = Math.sin(i / 5) * 10
+    pos.z = 40 - i * 0.5
+    session.tick(0.1, (t += 100))
   }
-  const edge = dropFrom({ x: DROP_SPOT.x, y: 0, z: DROP_SPOT.z })
-  const back = dropFrom(inRollZone())
-  assert.ok(edge && back)
-  assert.equal(edge.distance, back.distance)
-  assert.equal(edge.wins, back.wins)
-  assert.equal(edge.stretch, undefined)
+  assert.equal(profile.health, 0)
+  // A click swing pays a gain, tagged 'click', and counts towards the first guide step.
+  session.handle('clickSwing', {}, (t += 1000))
+  assert.ok(profile.health > 0)
+  assert.equal(events.filter((e) => e.type === 'train').at(-1).payload.source, 'click')
+  // An autoclicker's second click straight after pays nothing; one a beat later does.
+  const after = profile.health
+  session.handle('clickSwing', {}, t + 50)
+  assert.equal(profile.health, after)
+  session.handle('clickSwing', {}, t + CLICK_INTERVAL * 1000)
+  assert.ok(profile.health > after)
+})
+
+test('no click swings in a cage (it swings for you) or while a hit is out', () => {
+  const caged = makeSession(onPad(0))
+  caged.session.handle('enterPad', { pad: 0 }, 0)
+  caged.session.handle('clickSwing', {}, 1000)
+  assert.equal(caged.profile.health, 0)
+  const hitter = makeSession(inRollZone())
+  hitter.profile.health = 100
+  hitter.session.handle('roll', { accuracy: 0.9 }, 1000)
+  const before = hitter.profile.health
+  hitter.session.handle('clickSwing', {}, 1500)
+  assert.equal(hitter.profile.health, before)
+})
+
+// --- Enchantments (balls) ----------------------------------------------------------------------------
+
+test('balls are bought one by one, equipped, and saved', () => {
+  const p = createProfile('a', 'A')
+  assert.equal(p.equippedBall, 'plain')
+  assert.deepEqual(p.ownedBalls, ['plain'])
+  p.wins = 1e15
+  // Not out of order.
+  assert.equal(buyBall(p, BALLS[2].id).ok, false)
+  assert.ok(buyBall(p, BALLS[1].id).bought)
+  assert.equal(p.equippedBall, BALLS[1].id)
+  assert.equal(p.wins, 1e15 - BALLS[1].cost)
+  // Back to one you own: equips, costs nothing.
+  const wins = p.wins
+  assert.ok(equipBall(p, 'plain').ok)
+  assert.equal(p.wins, wins)
+  assert.equal(equipBall(p, BALLS[5].id).ok, false)
+  // A save with junk in it keeps only real balls, and an owned one equipped.
+  const n = normalizeProfile({ ownedBalls: ['plain', 'flame', 'nope'], equippedBall: 'nope' }, 'b', 'B')
+  assert.deepEqual(n.ownedBalls, ['plain', 'flame'])
+  assert.equal(n.equippedBall, 'plain')
+  // An old save (no balls at all) starts with the bare blade.
+  assert.deepEqual(normalizeProfile({}, 'c', 'C').ownedBalls, ['plain'])
+})
+
+test('every ball flies further and pays more than the last', () => {
+  for (let i = 1; i < BALLS.length; i += 1) {
+    assert.ok(BALLS[i].reach > BALLS[i - 1].reach, BALLS[i].id)
+    assert.ok(BALLS[i].wins > BALLS[i - 1].wins, BALLS[i].id)
+    assert.ok(BALLS[i].cost > BALLS[i - 1].cost, BALLS[i].id)
+  }
+  const hit = (ball) => {
+    const p = createProfile('a', 'A')
+    p.health = 5000
+    p.ownedBalls.push(ball)
+    p.equippedBall = ball
+    return applyRoll(p, 0, 0.5)
+  }
+  const plain = hit('plain')
+  const flame = hit('flame')
+  assert.equal(flame.ballId, 'flame')
+  assert.ok(Math.abs(flame.distance / plain.distance - BALLS.find((b) => b.id === 'flame').reach) < 0.01)
+  assert.ok(flame.wins > plain.wins)
+})
+
+test('the session buys balls from anywhere and tells the client which ball was hit', () => {
+  const profile = createProfile('a', 'A')
+  profile.wins = 1e6
+  profile.health = 5000
+  const { session, events } = makeSession(inRollZone(), profile)
+  session.handle('buyBall', { id: BALLS[1].id }, 0)
+  assert.equal(profile.equippedBall, BALLS[1].id)
+  session.handle('roll', { accuracy: 0.9 }, 1000)
+  const roll = events.find((e) => e.type === 'roll').payload
+  assert.equal(roll.ballId, BALLS[1].id)
 })

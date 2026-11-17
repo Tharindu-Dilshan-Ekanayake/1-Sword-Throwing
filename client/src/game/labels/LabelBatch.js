@@ -20,8 +20,16 @@ import { iconUrl } from '../../ui/icons'
  * re-projected every frame) per label.
  *
  * A label spec is `{ lines: [{ text, size, fill?, gradient?, rainbow?, icon? }],
- * pxPerUnit? }`: sizes are canvas pixels at full quality, `pxPerUnit` is how many of
- * those pixels make one world unit.
+ * pxPerUnit?, maxWidth? }`: sizes are canvas pixels at full quality, `pxPerUnit` is how
+ * many of those pixels make one world unit, and a line wider than `maxWidth` (canvas
+ * pixels at full quality) is drawn smaller to fit it - so a long sword name shrinks to
+ * fit its plate instead of widening it.
+ *
+ * Most labels turn to face the camera. A label added with `facing` (a yaw: 0 faces +Z)
+ * is flat instead - a plate fixed in the world, facing that way - and it's never shrunk
+ * near the camera, nor capped by the preset's label distance (its own fade only): the
+ * Sword Wall's name plates, all on one face so none ever hides another, read from right
+ * across the courtyard.
  */
 
 const FONT = '"Fredoka One", "Arial Rounded MT Bold", sans-serif'
@@ -33,18 +41,22 @@ const LINE_GAP = 0.04
 const vertexShader = /* glsl */ `
   attribute vec2 aCorner;
   attribute float aFade;
+  // A flat label's right, across its face, in the world; zero for one that faces the camera.
+  attribute vec3 aRight;
   uniform float uMaxDistance;
   varying vec2 vUv;
   varying float vAlpha;
   void main() {
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    float isFlat = step(0.5, dot(aRight, aRight));
+    vec3 world = position + aRight * aCorner.x + vec3(0.0, aCorner.y * isFlat, 0.0);
+    vec4 mv = modelViewMatrix * vec4(world, 1.0);
     float d = -mv.z;
-    // Shrink when the camera gets close, so a sign never fills the screen, and fade
-    // right out at arm's length.
-    mv.xy += aCorner * clamp(d / 18.0, 0.4, 1.0);
+    // A camera-facing one shrinks when the camera gets close, so a sign never fills the
+    // screen, and fades right out at arm's length.
+    mv.xy += aCorner * clamp(d / 18.0, 0.4, 1.0) * (1.0 - isFlat);
     gl_Position = projectionMatrix * mv;
-    float far = min(aFade, uMaxDistance);
-    vAlpha = (1.0 - smoothstep(far * 0.75, far, d)) * smoothstep(2.5, 6.0, d);
+    float far = min(aFade, mix(uMaxDistance, 1e5, isFlat));
+    vAlpha = (1.0 - smoothstep(far * 0.75, far, d)) * mix(smoothstep(2.5, 6.0, d), 1.0, isFlat);
     vUv = uv;
   }
 `
@@ -94,20 +106,31 @@ function lineFont(size) {
   return `${size}px ${FONT}`
 }
 
+/** One line's width at font `size`: its text, its icon and the gap between them. */
+function lineMetrics(ctx, line, size) {
+  ctx.font = lineFont(size)
+  const textWidth = ctx.measureText(line.text).width
+  const iconSize = line.icon ? size * 1.15 : 0
+  return { textWidth, iconSize, w: textWidth + (iconSize ? iconSize + size * 0.15 : 0) + size * 0.3 }
+}
+
 /** Measures a spec at `scale`; returns per-line metrics and the padded box. */
 function measure(ctx, spec, scale) {
+  const cap = spec.maxWidth ? spec.maxWidth * scale : Infinity
   let width = 0
   let height = 0
   const lines = spec.lines.map((line) => {
-    const size = line.size * scale
-    ctx.font = lineFont(size)
-    const textWidth = ctx.measureText(line.text).width
-    const iconSize = line.icon ? size * 1.15 : 0
-    const w = textWidth + (iconSize ? iconSize + size * 0.15 : 0) + size * 0.3
-    width = Math.max(width, w)
+    let size = line.size * scale
+    let m = lineMetrics(ctx, line, size)
+    // Too wide for the spec's maxWidth: this line alone is drawn smaller.
+    if (m.w > cap) {
+      size *= cap / m.w
+      m = lineMetrics(ctx, line, size)
+    }
+    width = Math.max(width, m.w)
     const h = size * (1.12 + LINE_GAP)
     height += h
-    return { line, size, textWidth, iconSize, h }
+    return { line, size, textWidth: m.textWidth, iconSize: m.iconSize, h }
   })
   return { lines, width: Math.ceil(width + PAD * 2 * scale), height: Math.ceil(height + PAD * 2 * scale) }
 }
@@ -173,11 +196,12 @@ export class LabelBatch {
    * @param {string} id
    * @param {[number, number, number]} position world-space centre
    * @param {object} spec see file comment
-   * @param {{ fade?: number, reserve?: object }} [options] `reserve` is a spec at least
-   *   as large as anything `update` will later draw here.
+   * @param {{ fade?: number, reserve?: object, facing?: number }} [options] `reserve` is a
+   *   spec at least as large as anything `update` will later draw here; `facing` (a yaw,
+   *   0 facing +Z) makes it a flat plate fixed in the world, facing that way.
    */
-  add(id, position, spec, { fade = 140, reserve } = {}) {
-    this.labels.set(id, { id, position, spec, fade, reserve })
+  add(id, position, spec, { fade = 140, reserve, facing } = {}) {
+    this.labels.set(id, { id, position, spec, fade, reserve, facing })
     return this
   }
 
@@ -278,10 +302,15 @@ export class LabelBatch {
     const corners = new Float32Array(n * 8)
     const uvs = new Float32Array(n * 8)
     const fades = new Float32Array(n * 4)
+    const rights = new Float32Array(n * 12)
     const index = new Uint16Array(n * 6)
     const size = this.pageSize
 
     page.labels.forEach((l, i) => {
+      // A flat one's right across its face, seen from the front (zero: faces the camera).
+      const flat = typeof l.facing === 'number'
+      const rx = flat ? Math.cos(l.facing) : 0
+      const rz = flat ? -Math.sin(l.facing) : 0
       const unit = (l.spec.pxPerUnit || 60) * this.scale
       const hw = l.w / unit / 2
       const hh = l.h / unit / 2
@@ -301,6 +330,8 @@ export class LabelBatch {
         corners.set([cx, cy], vi * 2)
         uvs.set([u, v], vi * 2)
         fades[vi] = l.fade
+        rights[vi * 3] = rx
+        rights[vi * 3 + 2] = rz
       })
       index.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6)
     })
@@ -310,6 +341,7 @@ export class LabelBatch {
     geometry.setAttribute('aCorner', new BufferAttribute(corners, 2))
     geometry.setAttribute('uv', new BufferAttribute(uvs, 2))
     geometry.setAttribute('aFade', new BufferAttribute(fades, 1))
+    geometry.setAttribute('aRight', new BufferAttribute(rights, 3))
     geometry.setIndex(new BufferAttribute(index, 1))
     return geometry
   }

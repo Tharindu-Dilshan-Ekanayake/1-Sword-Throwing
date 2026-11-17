@@ -2,6 +2,8 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Color, Euler, Matrix4, Quaternion, Vector3 } from 'three'
 
+import { getGame } from '../store/game'
+import { createSwordMesh, disposeSwordMesh } from './swords'
 import { createBoxInstances, disposeBlocks } from './blocks'
 import { sharedMaterials, STYLE } from './materials'
 import { computePose } from './playerPose'
@@ -37,7 +39,8 @@ const _s = new Vector3()
  * A classic blocky character, shown while the Bloxity avatar downloads (and instead of
  * it if it can't load), so the player is never invisible. Six boxes in one instanced
  * draw call through the shared toy material - no extra shader program. Posed by the
- * same playerPose as the real avatar (its limbs have no elbows or knees).
+ * same playerPose as the real avatar (its limbs have no elbows or knees), and carrying
+ * your sword where the pose puts it.
  *
  * @param {{ motionRef: React.MutableRefObject<object>, handRef?: React.MutableRefObject<object>, onReady?: () => void }} props
  */
@@ -52,6 +55,9 @@ export function FallbackAvatar({ motionRef, handRef, onReady }) {
   }, [])
 
   useEffect(() => () => disposeBlocks(mesh), [mesh])
+  const bat = useMemo(() => createSwordMesh(), [])
+  useEffect(() => () => disposeSwordMesh(bat), [bat])
+  const batRef = useRef(null)
 
   useEffect(() => {
     onReady?.()
@@ -61,12 +67,20 @@ export function FallbackAvatar({ motionRef, handRef, onReady }) {
     const instanced = ref.current
     if (!instanced) return
     const pose = computePose(motionRef.current)
+    const held = batRef.current
+    if (held) {
+      held.visible = pose.bat.mode !== 'none'
+      held.setSword(getGame().profile.equippedTire)
+      held.position.copy(pose.bat.pos)
+      held.quaternion.copy(pose.bat.quat)
+      held.scale.setScalar(pose.bat.scale)
+    }
     PARTS.forEach((part, i) => {
       const joint = part.joint ? pose.bones[part.joint] : null
       _pivot.makeTranslation(part.x, part.y + pose.lift, 0)
       _q.setFromEuler(joint ? _e.set(joint.swing, joint.twist, joint.sway) : _e.set(0, 0, 0))
       _rot.makeRotationFromQuaternion(_q)
-      // Rubber arms: longer and thinner as they stretch.
+      // Arms reaching for the sword's grip: a touch longer or shorter.
       const stretch = part.joint === 'ArmL1' ? pose.stretchL : part.joint === 'ArmR1' ? pose.stretchR : 1
       const thin = Math.min(1.15, Math.max(0.5, 1 / Math.sqrt(Math.max(0.3, stretch))))
       const h = part.h * stretch
@@ -87,7 +101,12 @@ export function FallbackAvatar({ motionRef, handRef, onReady }) {
     instanced.instanceMatrix.needsUpdate = true
   })
 
-  return <primitive ref={ref} object={mesh} />
+  return (
+    <>
+      <primitive ref={ref} object={mesh} />
+      <primitive ref={batRef} object={bat} />
+    </>
+  )
 }
 
 export default FallbackAvatar

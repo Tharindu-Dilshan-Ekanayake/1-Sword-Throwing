@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { BufferAttribute, BufferGeometry, Mesh, OrthographicCamera, Scene, ShaderMaterial, SRGBColorSpace, Vector2, WebGLRenderTarget } from 'three'
+import { BufferAttribute, BufferGeometry, FramebufferTexture, LinearFilter, Mesh, OrthographicCamera, Scene, ShaderMaterial, Vector2 } from 'three'
 
 import { roll } from './rollControl'
 
@@ -24,6 +24,8 @@ const vertexShader = /* glsl */ `
   }
 `
 
+// The copy holds the screen's own (display-encoded, tone-mapped) colours, so they're
+// averaged and written back as they are: no colour-space conversion either way.
 const fragmentShader = /* glsl */ `
   uniform sampler2D tScene;
   uniform float uAmount;
@@ -43,90 +45,110 @@ const fragmentShader = /* glsl */ `
       sum += texture2D(tScene, vUv + toCenter * reach * t).rgb;
     }
     gl_FragColor = vec4(sum / float(SAMPLES), 1.0);
-    #include <colorspace_fragment>
   }
 `
 
-/** The render target the scene goes into, and the full-screen pass that blurs it out. */
-function createPass(samples, antialias) {
-  // sRGB storage: 8 bits a channel without the banding linear values would show. 2x
-  // MSAA keeps the sharp middle smooth: about 42 MB at 1920x1080, where 4x is about 75.
-  const target = new WebGLRenderTarget(1, 1, { samples: antialias ? 2 : 0 })
-  target.texture.colorSpace = SRGBColorSpace
-  const geometry = new BufferGeometry()
-  // One triangle covering the screen.
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3))
-  const material = new ShaderMaterial({
-    defines: { SAMPLES: samples },
-    uniforms: { tScene: { value: target.texture }, uAmount: { value: 0 }, uCenter: { value: VANISH } },
-    vertexShader,
-    fragmentShader,
-    depthTest: false,
-    depthWrite: false,
-  })
-  const quad = new Mesh(geometry, material)
+/**
+ * The blur's material (one per sample count) and its screen triangle, kept for the whole
+ * session: a material disposed after each throw took its compiled shader with it, and the
+ * next throw compiled it again. Tiny; only the screen copy is let go between throws.
+ */
+const MATERIALS = new Map()
+let triangle = null
+function blurMaterial(samples) {
+  let material = MATERIALS.get(samples)
+  if (!material) {
+    material = new ShaderMaterial({
+      defines: { SAMPLES: samples },
+      uniforms: { tScene: { value: null }, uAmount: { value: 0 }, uCenter: { value: VANISH } },
+      vertexShader,
+      fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    })
+    MATERIALS.set(samples, material)
+  }
+  return material
+}
+
+/** A copy of the screen, `width` x `height` (the drawing buffer's size), smoothly sampled. */
+function screenCopy(width, height) {
+  const texture = new FramebufferTexture(width, height)
+  texture.minFilter = LinearFilter
+  texture.magFilter = LinearFilter
+  return texture
+}
+
+/** The full-screen pass that blurs the screen's copy back over it. */
+function createPass(samples) {
+  if (!triangle) {
+    // One triangle covering the screen.
+    triangle = new BufferGeometry()
+    triangle.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3))
+  }
+  const material = blurMaterial(samples)
+  material.uniforms.uAmount.value = 0
+  const quad = new Mesh(triangle, material)
   quad.frustumCulled = false
   const scene = new Scene()
   scene.add(quad)
-  return {
-    target,
-    material,
-    scene,
-    camera: new OrthographicCamera(),
-    amount: 0,
-    dispose() {
-      target.dispose()
-      geometry.dispose()
-      material.dispose()
-    },
-  }
+  return { material, scene, camera: new OrthographicCamera(), copy: null, amount: 0 }
 }
 
 /**
- * Motion blur down the sides of the screen while your tire rolls fast: the scene is drawn
- * into a render target, then onto the screen through a zoom blur that leaves the
- * middle (the rider) sharp and smears the edges away from the canyon's vanishing
- * point, more the faster you go. Below BLUR_FROM it renders straight to the screen
- * as usual, so a slow roll costs nothing extra.
+ * Motion blur down the sides of the screen while your sword flies fast: the scene is drawn
+ * to the screen as usual, copied, and the copy drawn back over it through a zoom blur that
+ * leaves the middle (the sword) sharp and smears the edges away from the road's vanishing
+ * point, more the faster you go. Below BLUR_FROM it's just the usual render, so a slow
+ * throw costs nothing extra.
+ *
+ * Drawing the scene to the screen (not into a render target) matters: three builds every
+ * material a second shader for a render target (linear output, no tone mapping), and
+ * whatever was first seen through the blur - the portal, the Sword Wall - compiled that
+ * mid-throw, a frame of a second or more on some GPUs. A screen copy is also a quarter of
+ * an antialiased target's memory.
  *
  * Post-processing, so MEDIUM and HIGH only (`motionBlur` samples). Mounted only while
- * sliding: its frame callback has priority 1, which takes the rendering over from R3F
+ * flying: its frame callback has priority 1, which takes the rendering over from R3F
  * until it unmounts.
  *
- * @param {{ samples: number, antialias: boolean }} props
+ * @param {{ samples: number }} props
  */
-export function SpeedBlur({ samples, antialias }) {
+export function SpeedBlur({ samples }) {
   const gl = useThree((s) => s.gl)
+  const width = useThree((s) => s.size.width)
+  const height = useThree((s) => s.size.height)
+  const dpr = useThree((s) => s.viewport.dpr)
   const passRef = useRef(null)
   /** The renderer, kept to hand stats counting back to it on the way out. */
   const glRef = useRef(null)
 
-  const scene = useThree((s) => s.scene)
-  const camera = useThree((s) => s.camera)
   useEffect(() => {
-    const pass = createPass(samples, antialias)
+    const pass = createPass(samples)
     passRef.current = pass
-    // Compiled now, during the throw, not mid-fall when the blur first kicks in.
+    // Compiled now, during the push-off, not mid-ride when the blur first kicks in (once a
+    // session: the material is kept, so after the first throw this is already done).
     gl.compileAsync(pass.scene, pass.camera).catch(() => {})
-    // Drawn into the blur's target, every material needs its linear-output variant too:
-    // gathered now with the target bound (and everything hidden shown for the moment),
-    // or a dozen programs compile in the middle of the fall the first time it blurs.
-    const previous = gl.getRenderTarget()
-    const hidden = []
-    scene.traverse((object) => {
-      if (object.visible || object.isLight) return
-      hidden.push(object)
-      object.visible = true
-    })
-    gl.setRenderTarget(pass.target)
-    gl.compileAsync(scene, camera).catch(() => {})
-    gl.setRenderTarget(previous)
-    for (const object of hidden) object.visible = false
     return () => {
       passRef.current = null
-      pass.dispose()
+      pass.material.uniforms.tScene.value = null
     }
-  }, [gl, samples, antialias, scene, camera])
+  }, [gl, samples])
+
+  // The screen copy, the drawing buffer's size: remade when that changes, never per frame.
+  useEffect(() => {
+    const pass = passRef.current
+    if (!pass) return undefined
+    gl.getDrawingBufferSize(_size)
+    const copy = screenCopy(_size.x, _size.y)
+    pass.copy = copy
+    pass.material.uniforms.tScene.value = copy
+    return () => {
+      if (pass.copy === copy) pass.copy = null
+      copy.dispose()
+    }
+  }, [gl, samples, width, height, dpr])
 
   useEffect(
     () => () => {
@@ -145,18 +167,14 @@ export function SpeedBlur({ samples, antialias }) {
     const delta = Math.min(rawDelta, 0.05)
     const want = roll.active && !roll.stopped && !roll.crashed ? smoothstep(BLUR_FROM, BLUR_FULL, roll.speed) : 0
     if (pass) pass.amount += (want - pass.amount) * (1 - Math.exp(-4 * delta))
-    if (!pass || pass.amount < 0.01) {
-      renderer.setRenderTarget(null)
-      renderer.render(scene, camera)
-      return
-    }
-    // Kept the size of the screen's drawing buffer (resizes, DPR changes).
-    renderer.getDrawingBufferSize(_size)
-    if (pass.target.width !== _size.x || pass.target.height !== _size.y) pass.target.setSize(_size.x, _size.y)
-    pass.material.uniforms.uAmount.value = pass.amount
-    renderer.setRenderTarget(pass.target)
-    renderer.render(scene, camera)
     renderer.setRenderTarget(null)
+    renderer.render(scene, camera)
+    if (!pass || !pass.copy || pass.amount < 0.01) return
+    // Mid-resize (the copy is remade in an effect): skip the blur for that frame.
+    renderer.getDrawingBufferSize(_size)
+    if (pass.copy.image.width !== _size.x || pass.copy.image.height !== _size.y) return
+    renderer.copyFramebufferToTexture(pass.copy)
+    pass.material.uniforms.uAmount.value = pass.amount
     renderer.render(pass.scene, pass.camera)
   }, 1)
 

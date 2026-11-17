@@ -1,27 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { HIT_GRADES, hitGrade, hitReach } from '@shared/balance'
+import { HIT_GRADES, hitGrade } from '@shared/balance'
 
-import { sfx } from '../../audio/sfx'
-import { cancelPull, grab, launch, letGo } from '../../game/launch'
-import { actions } from '../../net/actions'
+import { cancelPull, heldFor, launch, pressThrow, releaseThrow, slowAt } from '../../game/launch'
 import { useGame } from '../../store/game'
 import Icon from '../Icon'
 import StrokeText from '../StrokeText'
 import { ChunkyButton } from './parts'
 import { GRADIENTS, u } from './style'
 
-/** With Auto Drop on, the next throw starts this long after you're back in the zone. */
-const AUTO_DELAY_MS = 700
-/** Auto Drop lets go this long after the meter fills. */
-const AUTO_HOLD_MS = 150
 /** A press is ignored this soon after the last (a double tap, a bouncing key). */
-const PRESS_COOLDOWN_MS = 250
-/** Keys that hold DROP. */
-const DROP_KEYS = new Set(['KeyE', 'Enter', 'KeyF'])
+const PRESS_COOLDOWN_MS = 200
 
-/** The meter's coloured bands, from the grades: each runs from its `min` to the top. */
-const BANDS = HIT_GRADES.filter((g) => g.min > 0).map((g) => ({ id: g.id, from: g.min }))
+/**
+ * The meter's grade bands, from the full end (right) back: each grade spans the meter
+ * readings it covers (HIT_GRADES `min`), the fill sweeping up from empty (left).
+ */
+const BANDS = HIT_GRADES.filter((g) => g.min > 0).map((g, i, all) => ({ id: g.id, from: g.min, to: i === 0 ? 1 : all[i - 1].min }))
 const BAND_COLORS = {
   perfect: 'linear-gradient(180deg, #fff6a3 0%, #ffd21f 55%, #ff9c00 100%)',
   great: 'linear-gradient(180deg, #d9ff9a 0%, #5fe83a 55%, #1fb52a 100%)',
@@ -29,215 +24,215 @@ const BAND_COLORS = {
 }
 /** Each grade's colour for the live label over the meter. */
 const GRADE_COLORS = { perfect: '#ffd21f', great: '#7dff4a', good: '#9fe8ff', weak: '#ff6a5a' }
+/** What the label says when idle on a spot. */
+const IDLE_TEXT = 'HOLD THROW - let go at the top!'
 
 /**
- * The DROP ZONE's HUD: the big DROP! button and, while you hold it, the throw meter.
- * Hold DROP (or E / Enter) and you step up to the edge and wind up: the meter charges and,
- * once full, wobbles off the top. Let go to throw: the fuller the meter, the deeper the
- * phone smashes and the more it pays (HIT_GRADES) - let go right at the top of a wobble
- * for PERFECT. With the Auto Drop pass, a toggle under it throws for you every time
- * you're back (a plain drop, no meter). Jumping gives the throw up.
+ * The THROW STAGE's HUD: the THROW! button and the throw meter. Step up onto the stage -
+ * anywhere on it - and you're ready to throw. HOLD THROW (the button, Space, E, Enter, or press and
+ * hold on the game) and you wind up: the meter fills, then wobbles at the top - let go as
+ * it touches the gold PERFECT band: the higher it stands, the further your sword flies and
+ * the more it pays (HIT_GRADES). A screen-edge vignette tightens as you wind up. Walk off to step away.
  *
- * The meter is moved straight on the DOM every animation frame (the player keeps
- * launch.charge up to date); React only hears about starting and letting go.
+ * The meter and the vignette move straight on the DOM every animation frame (launch.js
+ * keeps the wind-up's clock); React only hears about stepping on and off.
  */
 export function RollButton() {
-  const near = useGame((s) => s.zone.atPosts && !s.roll && !s.rollResult && !s.panel)
-  const ownsAuto = useGame((s) => Boolean(s.profile.passes.autoRoll))
-  const autoOn = useGame((s) => Boolean(s.profile.passes.autoRoll && s.profile.settings.autoRoll))
-  /** Winding up right now (mirrors launch.gripping for React). */
-  const [gripping, setGripping] = useState(false)
-  const [auto, setAuto] = useState(false)
+  const near = useGame((s) => s.zone.atPlate && !s.roll && !s.rollResult && !s.panel)
+  /** Up on the throw stage right now (mirrors launch.gripping for React). */
+  const [atBat, setAtBat] = useState(false)
   const lastPress = useRef(-Infinity)
   const fillRef = useRef(null)
+  const markerRef = useRef(null)
   const labelRef = useRef(null)
-  const visible = near || gripping
+  const meterRef = useRef(null)
+  const vignetteRef = useRef(null)
+  const buttonRef = useRef(null)
+  const visible = near || atBat
 
-  const doGrab = useCallback((byAuto = false) => {
-    if (launch.gripping || launch.released) return
+  const press = useCallback(() => {
     const now = performance.now()
-    if (!byAuto && now - lastPress.current < PRESS_COOLDOWN_MS) return
+    if (now - lastPress.current < PRESS_COOLDOWN_MS) return
     lastPress.current = now
-    grab(byAuto, now)
-    sfx.stretchStart()
-    setGripping(true)
-    setAuto(byAuto)
+    pressThrow(now)
   }, [])
+  const release = useCallback(() => releaseThrow(performance.now()), [])
 
-  /** Lets go; `plain` sends no meter reading (Auto Drop). */
-  const doLetGo = useCallback((plain = false) => {
-    if (!launch.gripping) return
-    const charge = letGo()
-    sfx.stretchStop()
-    setGripping(false)
-    setAuto(false)
-    actions.roll(plain ? undefined : Math.round(charge * 1000) / 1000)
-  }, [])
+  // Stepping on and off happens in the player (walking on and off the stage): keep up.
+  useEffect(() => {
+    if (!visible) return undefined
+    const id = setInterval(() => setAtBat(launch.gripping || launch.released), 80)
+    return () => clearInterval(id)
+  }, [visible])
 
-  // A panel opened or the drop started: give the throw up.
+  // A panel opened or the throw started: step off (a throw steps you back on after).
   const panel = useGame((s) => s.panel)
   const rolling = useGame((s) => Boolean(s.roll))
   const [blocked, setBlocked] = useState(false)
   if (Boolean(panel || rolling) !== blocked) {
     setBlocked(Boolean(panel || rolling))
-    if (panel || rolling) {
-      setGripping(false)
-      setAuto(false)
-    }
+    if (panel || rolling) setAtBat(false)
   }
   useEffect(() => {
-    if (!blocked || !launch.gripping) return
-    cancelPull()
-    sfx.stretchStop()
-  }, [blocked])
+    if (blocked && panel && launch.gripping && !launch.released) cancelPull()
+  }, [blocked, panel])
 
-  // Keyboard: hold E / Enter / F to wind up, let go to throw.
+  // E / Enter / F: hold to wind up, let go to throw. (Space is the player's: Player.jsx.)
   useEffect(() => {
     if (!visible) return undefined
-    const down = (e) => {
-      if (e.repeat || !DROP_KEYS.has(e.code)) return
-      doGrab()
+    const keys = new Set(['KeyE', 'Enter', 'KeyF'])
+    const onDown = (e) => {
+      if (keys.has(e.code) && !e.repeat) press()
     }
-    const up = (e) => {
-      if (!DROP_KEYS.has(e.code) || launch.auto) return
-      doLetGo()
+    const onUp = (e) => {
+      if (keys.has(e.code)) release()
     }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
     return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
     }
-  }, [visible, doGrab, doLetGo])
+  }, [visible, press, release])
 
-  // A finger or mouse let go anywhere (not only over the button) throws.
+  // The meter, every frame, while on the stage: the fill, the marker riding its edge, the grade
+  // letting go right now would get, the button glowing gold at full charge.
   useEffect(() => {
-    if (!gripping || auto) return undefined
-    const up = () => doLetGo()
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
-    return () => {
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-    }
-  }, [gripping, auto, doLetGo])
-
-  // Auto Drop: wind up and throw by itself every time you're back in the zone.
-  useEffect(() => {
-    if (!near || !autoOn || gripping) return undefined
-    const id = setTimeout(() => doGrab(true), AUTO_DELAY_MS)
-    return () => clearTimeout(id)
-  }, [near, autoOn, gripping, doGrab])
-
-  // The meter, every frame, while winding up (and noticing a jump giving it up).
-  useEffect(() => {
-    if (!gripping) return undefined
+    if (!atBat) return undefined
     let raf = 0
     const tick = () => {
-      if (!launch.gripping) {
-        sfx.stretchStop()
-        setGripping(false)
-        setAuto(false)
-        return
+      const now = performance.now()
+      const winding = launch.stage === 'charge'
+      const shown = winding || launch.released
+      const value = launch.released ? launch.accuracy : winding ? launch.charge : 0
+      if (fillRef.current) fillRef.current.style.width = `${value * 100}%`
+      if (markerRef.current) markerRef.current.style.left = `${value * 100}%`
+      if (meterRef.current) meterRef.current.style.opacity = shown ? '1' : '0.55'
+      const coil = slowAt(now)
+      const full = winding && heldFor(now) > 0.85
+      if (vignetteRef.current) vignetteRef.current.style.opacity = String(Math.min(1, coil * 0.9 + (full ? 0.1 : 0)))
+      if (buttonRef.current) buttonRef.current.style.filter = full ? `drop-shadow(0 0 ${u(18)} #ffd21f) brightness(1.15)` : 'none'
+      let text = IDLE_TEXT
+      let color = '#ffffff'
+      if (launch.released) {
+        const grade = hitGrade(launch.accuracy)
+        text = grade.label
+        color = GRADE_COLORS[grade.id]
+      } else if (winding) {
+        const grade = hitGrade(launch.charge)
+        text = grade.id === 'perfect' ? 'LET GO NOW!' : grade.label.replace(/ THROW|[!.]+$/g, '')
+        color = GRADE_COLORS[grade.id]
       }
-      const charge = launch.charge
-      sfx.stretchSet(charge, launch.full)
-      if (auto && launch.full && performance.now() - launch.fullSince > AUTO_HOLD_MS) {
-        doLetGo(true)
-        return
-      }
-      if (fillRef.current) fillRef.current.style.width = `${charge * 100}%`
-      // The grade letting go now would get, in its colour, and how deep it would go:
-      // "LET GO! PERFECT x1.5". Both layers of the outlined text (StrokeText).
-      const grade = hitGrade(charge)
-      const text = launch.full ? `LET GO! ${grade.label.replace(/ THROW|[!.]+$/g, '')} x${hitReach(charge).toFixed(1)}` : 'CHARGING...'
       for (const layer of labelRef.current?.querySelectorAll('.pp-text-stroke, .pp-text-fill') ?? []) layer.textContent = text
       const fill = labelRef.current?.querySelector('.pp-text-fill')
-      if (fill) fill.style.color = launch.full ? GRADE_COLORS[grade.id] : '#ffffff'
+      if (fill) fill.style.color = color
       raf = requestAnimationFrame(tick)
     }
     tick()
     return () => cancelAnimationFrame(raf)
-  }, [gripping, auto, doLetGo])
+  }, [atBat])
 
   if (!visible) return null
+  const manual = atBat
   return (
     <>
-      {/* The throw meter, up under the top bar: the middle of the screen is you at the edge. */}
-      {gripping && !auto && (
+      {/* Winding up: the screen's edges closing in, gold and dark, the throw building. */}
+      {atBat && (
+        <div
+          ref={vignetteRef}
+          className="pointer-events-none absolute inset-0"
+          style={{
+            opacity: 0,
+            transition: 'opacity 0.12s linear',
+            background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(60,30,0,0.35) 78%, rgba(30,12,0,0.7) 100%)',
+          }}
+        />
+      )}
+      {/* The throw meter, up under the top bar. */}
+      {manual && (
         <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: u(150) }}>
-          <span ref={labelRef} className="whitespace-nowrap" style={{ fontSize: u(54), color: '#ffffff' }}>
-            <StrokeText stroke={u(11)}>CHARGING...</StrokeText>
+          <span ref={labelRef} className="whitespace-nowrap" style={{ fontSize: u(52), color: '#ffffff' }}>
+            <StrokeText stroke={u(11)}>{IDLE_TEXT}</StrokeText>
           </span>
-          <div
-            className="relative overflow-hidden"
-            style={{
-              width: u(560),
-              height: u(54),
-              borderRadius: u(27),
-              border: `${u(6)} solid #1b1b1f`,
-              background: '#2a1f4a',
-              boxShadow: `0 ${u(6)} 0 rgba(0,0,0,0.35)`,
-            }}
-          >
-            {BANDS.map((b) => (
-              <div key={b.id} className="absolute top-0 bottom-0" style={{ left: `${b.from * 100}%`, right: 0, background: BAND_COLORS[b.id], opacity: 0.32 }} />
-            ))}
+          <div ref={meterRef} className="flex flex-col items-center" style={{ opacity: 0.55, transition: 'opacity 0.15s' }}>
             <div
-              ref={fillRef}
-              className="absolute top-0 bottom-0 left-0"
+              className="relative overflow-hidden"
               style={{
-                width: '0%',
-                background: 'repeating-linear-gradient(135deg, #4fc8ff 0 14px, #9fe8ff 14px 28px)',
-                borderRight: `${u(5)} solid #ffffff`,
+                width: u(620),
+                height: u(54),
+                borderRadius: u(27),
+                border: `${u(6)} solid #1b1b1f`,
+                background: 'linear-gradient(180deg, #5a4a6a 0%, #2c2438 100%)',
+                boxShadow: `0 ${u(6)} 0 rgba(0,0,0,0.35)`,
               }}
-            />
-            {BANDS.map((b) => (
-              <div key={`${b.id}-mark`} className="absolute top-0 bottom-0" style={{ left: `${b.from * 100}%`, width: u(4), background: '#1b1b1f', opacity: 0.6 }} />
-            ))}
+            >
+              {/* The grade bands at the full end: GOOD, then GREAT, then PERFECT at the top. */}
+              {BANDS.map((b) => (
+                <div key={b.id} className="absolute top-0 bottom-0" style={{ left: `${b.from * 100}%`, width: `${(b.to - b.from) * 100}%`, background: BAND_COLORS[b.id], opacity: 0.45 }} />
+              ))}
+              {/* The charge itself, sweeping up. */}
+              <div
+                ref={fillRef}
+                className="absolute top-0 bottom-0 left-0"
+                style={{ width: '0%', background: 'linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(255,226,140,0.75) 50%, rgba(255,160,40,0.7) 100%)', mixBlendMode: 'screen' }}
+              />
+            </div>
+            {/* The marker riding the fill's edge: a glowing sword-tip diamond. */}
+            <div className="relative" style={{ width: u(620), height: 0 }}>
+              <div
+                ref={markerRef}
+                className="absolute"
+                style={{
+                  left: '0%',
+                  top: u(-58),
+                  width: u(30),
+                  height: u(62),
+                  marginLeft: u(-15),
+                  background: 'linear-gradient(180deg, #ffffff 0%, #ffe27a 60%, #ff9c00 100%)',
+                  clipPath: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+                  filter: `drop-shadow(0 0 ${u(6)} #ffd21f)`,
+                }}
+              />
+            </div>
+            <span className="flex items-center" style={{ fontSize: u(28), marginTop: u(10), gap: u(8) }}>
+              <StrokeText stroke={u(7)}>Let go in the gold for a PERFECT throw!</StrokeText>
+            </span>
           </div>
-          <span className="flex items-center" style={{ fontSize: u(32), marginTop: u(10), gap: u(8) }}>
-            <Icon name="tire" size={u(40)} />
-            <StrokeText stroke={u(7)}>Let go when the meter hits the top for a PERFECT throw!</StrokeText>
-          </span>
         </div>
       )}
-      <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(300) }}>
-        {!gripping && (
-          <ChunkyButton
-            gradient={GRADIENTS.greenButton}
-            onPointerDown={(e) => {
-              e.preventDefault()
-              doGrab()
-            }}
-            title="Drop your phone (hold, then let go)"
-            radius={22}
-            border={6}
-            style={{ width: u(330), height: u(130), touchAction: 'none' }}
-          >
-            <span className="flex items-center" style={{ gap: u(10), fontSize: u(78) }}>
-              <StrokeText stroke={u(13)}>DROP!</StrokeText>
-            </span>
-          </ChunkyButton>
-        )}
-        {!gripping && (
-          <span style={{ fontSize: u(30), marginTop: u(10) }}>
-            <StrokeText stroke={u(7)}>Hold DROP (or E), let go at the top!</StrokeText>
+      {/* THROW! in the middle, near the bottom (the level bar and the other buttons step
+          aside while it's up - HUD.jsx). Hold it to wind up, let go to throw. */}
+      <div className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ bottom: u(90) }}>
+        {!atBat && (
+          <span className="pointer-events-none flex items-center" style={{ fontSize: u(34), gap: u(8), marginBottom: u(14) }}>
+            <Icon name="arrowDown" size={u(40)} />
+            <StrokeText stroke={u(7)}>Step up onto the THROW STAGE to throw your sword!</StrokeText>
           </span>
         )}
-        {ownsAuto && (
-          <ChunkyButton
-            gradient={autoOn ? GRADIENTS.goldButton : GRADIENTS.greyButton}
-            onClick={() => actions.setSetting('autoRoll', !autoOn)}
-            title="Auto Drop"
-            radius={10}
-            border={4}
-            style={{ height: u(56), padding: `0 ${u(20)}`, marginTop: u(12) }}
-          >
-            <span style={{ fontSize: u(32) }}>
-              <StrokeText stroke={u(7)}>Auto Drop: {autoOn ? 'ON' : 'OFF'}</StrokeText>
-            </span>
-          </ChunkyButton>
+        {(manual || !atBat) && (
+          <div ref={buttonRef}>
+            <ChunkyButton
+              className="pp-hit pp-hit-idle"
+              gradient={GRADIENTS.goldButton}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.currentTarget.setPointerCapture?.(e.pointerId)
+                press()
+              }}
+              onPointerUp={release}
+              onPointerCancel={release}
+              onLostPointerCapture={release}
+              title="Hold to wind up, let go to throw (Space / E)"
+              radius={30}
+              border={6}
+              style={{ height: u(124), padding: `0 ${u(56)}`, minWidth: u(380), touchAction: 'none' }}
+            >
+              <span className="flex items-center" style={{ fontSize: u(64), gap: u(16) }}>
+                <Icon name="bat" size={u(68)} />
+                <StrokeText stroke={u(12)}>THROW!</StrokeText>
+              </span>
+            </ChunkyButton>
+          </div>
         )}
       </div>
     </>

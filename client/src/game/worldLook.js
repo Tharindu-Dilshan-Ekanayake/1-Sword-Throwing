@@ -7,8 +7,8 @@ import { skyUniforms } from './skyState'
 
 /**
  * The world you're in (index into balance WORLDS) and what it changes on screen: the
- * stages the field shows - their names, colours and scenery; every world's gates stand
- * at the same yards - and the sky. GameScene remounts the field when the world changes,
+ * stages the valley shows - their names, colours and scenery; every world's stages start
+ * at the same metres - and the sky. GameScene remounts the field when the world changes,
  * so whatever it builds on mount follows; tables derived from the stages are built once
  * per world (`perWorld`) and picked when used.
  */
@@ -32,11 +32,12 @@ export function skyLook({ top, horizon, sun = '#ffffff', glow = 0.5, clouds = 0.
 }
 
 /**
- * The lobby's sky in each world: World 1's golden-hour game day; Palm Beach's sunset - a
- * violet sky going pink and orange down to the sea, the low sun big and gold over the
- * water, its haze (and the fog) the colour of the sea's horizon.
+ * The lobby's sky in each world: Sunblade Academy's clear blue fantasy day; Dragonfire
+ * Peaks' fiery dusk - smoky violet overhead going ember red and orange down to the lava
+ * sea, a hot low sun haze, the first stars through the ash, and its fog the colour of the
+ * glow at the horizon.
  */
-const LOBBY_SKIES = [skyLook(SKY), skyLook({ top: '#3d2f8f', horizon: '#ff9f86', sun: '#ffd27a', glow: 1.15, clouds: 0.6, stars: 0 })]
+const LOBBY_SKIES = [skyLook(SKY), skyLook({ top: '#2a0c22', horizon: '#ff7030', sun: '#ffb468', glow: 1.15, clouds: 0.5, stars: 0.22 })]
 export const lobbySky = () => LOBBY_SKIES[activeWorld()] ?? LOBBY_SKIES[0]
 
 /**

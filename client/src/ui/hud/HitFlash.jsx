@@ -9,8 +9,8 @@ import { u } from './style'
 
 const gradeOf = (id) => HIT_GRADES.find((g) => g.id === id)
 const bonusOf = (id) => gradeOf(id).bonus
-/** "+20% DEPTH": how much deeper than a plain drop a grade's best throw smashes. */
-const extraDistance = (id) => `+${Math.round((gradeOf(id).reach[1] - 1) * 100)}% DEPTH`
+/** "+20% DISTANCE": how much further than a plain throw a grade's best throw flies. */
+const extraDistance = (id) => `+${Math.round((gradeOf(id).reach[1] - 1) * 100)}% DISTANCE`
 
 /**
  * Each graded hit's title card: its words, their gradient, how big, the light rays'
@@ -34,7 +34,7 @@ const CARDS = [
     rays: 'rgba(95, 214, 255, 0.45)',
     stars: 6,
     badges: [
-      [`POWER THROW ${extraDistance('great')}`, 'linear-gradient(180deg, #8affc8 0%, #2fd0ff 100%)'],
+      [`LINE DRIVE ${extraDistance('great')}`, 'linear-gradient(180deg, #8affc8 0%, #2fd0ff 100%)'],
       [`x${bonusOf('great')} WINS`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
     ],
   },
@@ -46,7 +46,7 @@ const CARDS = [
     rays: 'rgba(255, 214, 60, 0.5)',
     stars: 8,
     badges: [
-      [`MEGA THROW ${extraDistance('perfect')}`, 'linear-gradient(180deg, #ff9a3a 0%, #ff3b3b 100%)'],
+      [`MOONSHOT ${extraDistance('perfect')}`, 'linear-gradient(180deg, #ff9a3a 0%, #ff3b3b 100%)'],
       [`x${bonusOf('perfect')} WINS`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
     ],
   },

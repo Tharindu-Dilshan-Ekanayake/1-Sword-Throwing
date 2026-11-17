@@ -50,12 +50,6 @@ export const STYLE = {
    * bands, under a cream frosting cap that drips a wavy way down the sides.
    */
   MESA: 15,
-  /** Wallpaper: soft vertical bands with a pinstripe and a little diamond motif, no studs. */
-  PAPER: 16,
-  /** Wooden floor: staggered planks, each its own shade, with fine seams. */
-  PARQUET: 17,
-  /** Glossy floor tiles in two shades, with grout lines. */
-  TILES: 18,
 }
 
 /** Shared clock for animated styles; WorldClock advances it once per frame. */
@@ -158,8 +152,7 @@ const fragmentBody = /* glsl */ `
         vec2 f = fract(cell);
         float win = step(0.18, f.x) * step(f.x, 0.82) * step(0.22, f.y) * step(f.y, 0.86);
         float frame = step(0.12, f.x) * step(f.x, 0.88) * step(0.16, f.y) * step(f.y, 0.92);
-        // No windows in the lobby's bottom strip; the city far below the cliff has them all the way down.
-        float lowest = vToyPos.y < -20.0 ? 1.0 : step(0.0, vToyPos.y - 0.6);
+        float lowest = step(0.0, vToyPos.y - 0.6);
         col = mix(col, vec3(0.97), frame * lowest);
         col = mix(col, vec3(0.42, 0.78, 1.0) * (0.9 + 0.2 * f.y), win * lowest);
       }
@@ -227,7 +220,7 @@ const fragmentBody = /* glsl */ `
         col *= mix(0.82, 1.05, cube);
       }
       col *= toyTile(sp);
-    } else if (style < 16.0) {
+    } else {
       // Mesa: frosting on top dripping down the sides in waves, candy strata below.
       float drip = 0.55 + 0.4 * sin(vToyPos.x * 1.9 + vToyPos.z * 1.3) + 0.3 * sin((vToyPos.x - vToyPos.z) * 0.7);
       if (isTop || (vToyTop - vToyPos.y) < drip) {
@@ -237,49 +230,6 @@ const fragmentBody = /* glsl */ `
         col *= 0.8 + 0.3 * fract(sin(band * 12.9898) * 43758.5453);
       }
       col *= toyTile(sp);
-    } else if (style < 17.0) {
-      // Wallpaper: bands along the wall (x on north/south walls, z on east/west).
-      if (!isTop) {
-        float u = an.x > 0.5 ? vToyPos.z : vToyPos.x;
-        vec2 pw = fwidth(vec2(u, vToyPos.y));
-        float aa = max(max(pw.x, pw.y), 1e-4);
-        float fade = 1.0 - smoothstep(0.15, 0.45, aa);
-        float f = fract(u / 1.4);
-        float band = smoothstep(0.5 - aa, 0.5 + aa, f);
-        col *= mix(1.0, mix(0.92, 1.03, band), fade);
-        float pin = 1.0 - smoothstep(0.0, aa * 1.5 + 0.012, abs(f - 0.5));
-        col = mix(col, col * 1.2 + vec3(0.04), pin * 0.55 * fade);
-        vec2 m = vec2(f - 0.25, fract(vToyPos.y / 1.4) - 0.5);
-        float dia = 1.0 - smoothstep(0.07 - aa, 0.07 + aa, abs(m.x) + abs(m.y) * 0.7);
-        col = mix(col, col * 1.14, dia * (1.0 - band) * fade);
-      }
-    } else if (style < 18.0) {
-      // Parquet: planks 2.8 m by 0.7 m along x, every row staggered, on the top face.
-      if (isTop) {
-        float row = floor(vToyPos.z / 0.7);
-        float px = (vToyPos.x + toyHash(vec2(row, 3.0)) * 2.8) / 2.8;
-        float plank = floor(px);
-        vec2 f = vec2(fract(px), fract(vToyPos.z / 0.7));
-        vec2 w = fwidth(vec2(px, vToyPos.z / 0.7));
-        float fade = 1.0 - smoothstep(0.25, 0.8, max(w.x, w.y));
-        float seam = max(1.0 - smoothstep(0.0, w.x * 1.5 + 0.006, min(f.x, 1.0 - f.x)), 1.0 - smoothstep(0.0, w.y * 1.5 + 0.03, min(f.y, 1.0 - f.y)));
-        float h = toyHash(vec2(plank, row));
-        col *= mix(1.0, (0.86 + 0.22 * h) * (0.97 + 0.03 * sin(f.y * 37.0 + h * 6.0)), fade);
-        col *= 1.0 - seam * 0.32 * fade;
-      }
-    } else {
-      // Tiles: 1.5 m squares, alternate ones a shade lighter, a sheen and grout lines.
-      if (isTop) {
-        vec2 t = vToyPos.xz / 1.5;
-        vec2 f = fract(t);
-        vec2 w = fwidth(t);
-        float fade = 1.0 - smoothstep(0.25, 0.8, max(w.x, w.y));
-        float check = mod(floor(t.x) + floor(t.y), 2.0);
-        float grout = 1.0 - smoothstep(0.0, max(w.x, w.y) * 1.5 + 0.025, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
-        float sheen = smoothstep(0.55, 0.95, 1.0 - abs(f.x - f.y)) * 0.06;
-        col *= mix(1.0, mix(0.9, 1.05, check) + sheen, fade);
-        col = mix(col, vec3(0.93), grout * 0.6 * fade);
-      }
     }
 
     diffuseColor.rgb = col;

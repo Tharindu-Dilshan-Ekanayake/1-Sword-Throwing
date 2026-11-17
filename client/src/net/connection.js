@@ -3,6 +3,7 @@ import { environment } from '../bloxity/env'
 import { GAME_SLUG, joinToken, rememberSaveTicket, saveTickets } from '../bloxity/identity'
 import { getSDK, safeCall, waitForSDK } from '../bloxity/sdk'
 
+import { ghostStart } from '../game/roll/path'
 import { runtime } from '../game/runtime'
 import { getGame } from '../store/game'
 import { setTransport } from './actions'
@@ -63,7 +64,7 @@ async function findDevServer() {
   for (const port of DEV_PORTS) candidates.push(`${window.location.protocol}//${window.location.hostname}:${port}`)
   for (const url of new Set(candidates)) {
     const health = await healthOf(url)
-    if (health?.ok && health.game === 'phone-plunge') return url
+    if (health?.ok && health.game === '1-sword-throwing') return url
   }
   return null
 }
@@ -234,11 +235,12 @@ function attachRoom(room, identity, Callbacks, endpoint, gen) {
         getGame().setLeaderboards(payload)
         break
       case 'ghostRoll':
-        // Never your own drop (you're watching it already), and only drops in your world.
-        // Their avatar plays the throw at the edge (remote/).
+        // Never your own throw (yours is flying already), and only throws down your world's
+        // field. Their avatar plays the throw (remote/) and their sword flies down its own
+        // line of the field (roll/SwordFlight).
         if (payload.sid === room.sessionId) break
         if ((payload.world || 0) !== (getGame().profile.world || 0)) break
-        runtime.ghostRolls.set(payload.sid, { ...payload, startedAt: performance.now() })
+        runtime.ghostRolls.set(payload.sid, { ...payload, ...ghostStart(payload), startedAt: performance.now() })
         break
       case 'kicked':
         leaving = true

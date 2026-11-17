@@ -1,4 +1,4 @@
-import { dayNumber, DROP_ROOF, LUCKY_CHANCE, LUCKY_GIFTS, QUEST_BONUS, QUEST_TIERS, QUEST_TYPES, QUESTS_PER_DAY, streakMultiplier } from './balance.js'
+import { dayNumber, LUCKY_CHANCE, LUCKY_GIFTS, QUEST_BONUS, QUEST_TIERS, QUEST_TYPES, QUESTS_PER_DAY, streakMultiplier } from './balance.js'
 import { niceRound, payReward, winsForRolls } from './logic.js'
 import { mulberry32 } from './rng.js'
 
@@ -18,16 +18,12 @@ function hashString(text) {
   return h >>> 0
 }
 
-/**
- * A quest's target for `tier`, scaled by your deepest drop where its kind asks. A share of
- * your best ('best') is a share of the depth under the glass roof - every drop falls the
- * same DROP_ROOF to get there - so "90% of your best" is a real ask from the first day.
- */
+/** A quest's target for `tier`, scaled by your best throw where its kind asks. */
 function questTarget(type, tier, profile) {
   const raw = type.targets[tier]
-  const best = Math.max(DROP_ROOF + 120, profile.stats.bestDistance || 0)
+  const best = Math.max(120, profile.stats.bestDistance || 0)
   if (type.scale === 'total') return niceRound(raw * best)
-  if (type.scale === 'best') return niceRound(DROP_ROOF + Math.max(60, raw * (best - DROP_ROOF)))
+  if (type.scale === 'best') return niceRound(Math.max(80, raw * best))
   return raw
 }
 
@@ -52,8 +48,15 @@ export function ensureQuests(profile, now) {
   return true
 }
 
+/**
+ * A whole number with thousands commas ("12,500"). By hand, not toLocaleString: the
+ * browser's first number-format call sets up its locale data (~12 ms on a phone), and the
+ * first quest finishes on the release of your very first throw.
+ */
+const withCommas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
 /** A quest's line for the UI: "Launch 12 times". */
-export const questText = (quest) => QUEST_TYPES[quest.type]?.text.replace('{n}', quest.target.toLocaleString('en-US')) ?? ''
+export const questText = (quest) => QUEST_TYPES[quest.type]?.text.replace('{n}', withCommas(quest.target)) ?? ''
 
 export const questDone = (quest) => quest.progress >= quest.target
 

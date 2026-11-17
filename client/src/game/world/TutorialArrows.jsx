@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 import { TUTORIAL } from '@shared/balance'
-import { EGG_STANDS, groundHeightAt, PAD_RADIUS, PAD_X, padCenterZ, ROLL_ZONE, TIRE_STANDS } from '@shared/world'
+import { BALL_SHOP, cageBatterSpot, EGG_STANDS, groundHeightAt, PAD_RADIUS, SWORD_COUNTER, THROW_STAGE } from '@shared/world'
 
 import { getGame } from '../../store/game'
 import { createToyInstances, PropBuilder } from '../blocks'
@@ -17,10 +17,27 @@ const ARRIVED = 3.5
 
 /** Ground point each tutorial step leads to. */
 const TARGETS = {
-  roll: { x: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 },
-  pad0: { x: PAD_X, z: padCenterZ(0), reach: PAD_RADIUS - 0.5 },
-  tires: { x: TIRE_STANDS[1].x, z: TIRE_STANDS[1].z },
-  eggs: { x: EGG_STANDS[0].x, z: EGG_STANDS[0].z - 3.5 },
+  // Up onto the throw stage: anywhere on it will do, so it counts once you're on it.
+  roll: { x: 0, z: THROW_STAGE.maxZ - 3, reach: 2.6 },
+  pad0: { ...cageBatterSpot(0), reach: PAD_RADIUS - 0.8 },
+  // Onto the Sword Counter at the foot of the Sword Wall: it sells your next sword.
+  tires: { x: SWORD_COUNTER.x, z: SWORD_COUNTER.z, reach: SWORD_COUNTER.half - 0.6 },
+  balls: { x: BALL_SHOP.x, z: BALL_SHOP.z, reach: BALL_SHOP.radius - 0.6 },
+  // The first egg, from its side on the avenue (where you come from), within its reach.
+  eggs: { x: EGG_STANDS[0].x - Math.sign(EGG_STANDS[0].x) * 2.6, z: EGG_STANDS[0].z, reach: 1.5 },
+}
+/** Where to aim instead of `target` from (x, z): round the end of the fence in the way, if any. */
+const _aim = { x: 0, z: 0 }
+function aimFor(target, x, z) {
+  _aim.x = target.x
+  _aim.z = target.z
+  const fence = target.round
+  // South of the backstop and behind it: lead round its nearer end first.
+  if (fence && z > fence.z + 0.4 && Math.abs(x - fence.x) < fence.halfWidth + 1.2) {
+    _aim.x = fence.x + (x > fence.x + 0.5 ? 1 : -1) * (fence.halfWidth + 1.6)
+    _aim.z = fence.z
+  }
+  return _aim
 }
 
 const _m = new Matrix4()
@@ -68,10 +85,15 @@ export function TutorialArrows() {
       instanced.count = 0
       return
     }
-    const dx = target.x - player.x
-    const dz = target.z - player.z
+    if (Math.hypot(target.x - player.x, target.z - player.z) < (target.reach ?? ARRIVED)) {
+      instanced.count = 0
+      return
+    }
+    const aim = aimFor(target, player.x, player.z)
+    const dx = aim.x - player.x
+    const dz = aim.z - player.z
     const dist = Math.hypot(dx, dz)
-    if (dist < (target.reach ?? ARRIVED)) {
+    if (dist < 0.5) {
       instanced.count = 0
       return
     }
@@ -84,8 +106,8 @@ export function TutorialArrows() {
     for (let d = 1.6 + offset; d < dist - 1 && count < MAX_CHEVRONS; d += SPACING) {
       const x = player.x + ux * d
       const z = player.z + uz * d
-      // Over the pads and ball-shop stages, not under them, and well clear of everything
-      // lying on the floor (field lines and decals 0.03-0.04 up, the treadmills' rails 0.2).
+      // Over the pads' mats and the sword shop's stages, not under them, and well clear of
+      // everything lying on the floor (decals 0.03 up, the stage's deck painting 0.03 over it).
       _p.set(x, groundHeightAt(x, z) + 0.15, z)
       // Fade in near the player, shrink near the goal - in plan only, so their height
       // above the floor never changes.

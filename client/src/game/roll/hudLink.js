@@ -64,16 +64,9 @@ export function writeDistance(meters, now = performance.now()) {
   if (distanceSpans.length === 0 || m === shown || now - lastWrite < UPDATE_MS) return
   shown = m
   lastWrite = now
-  // Falling: the depth counts down below the edge, "-1,234 m".
-  const text = m > 0 ? `-${formatDistance(m)}` : formatDistance(0)
+  const text = formatDistance(m)
   for (const span of distanceSpans) setText(span, text)
-  if (marker) marker.style.transform = `translateY(${Math.min(1, m / barMax) * 100}%)`
-}
-
-/** The depth the side bar's bottom stands for, this drop (set as the drop starts). */
-let barMax = 1000
-export function setBarScale(max) {
-  barMax = Math.max(1, max)
+  if (marker) marker.style.transform = `translateX(${zoneBarPosition(m) * 100}%)`
 }
 
 /**

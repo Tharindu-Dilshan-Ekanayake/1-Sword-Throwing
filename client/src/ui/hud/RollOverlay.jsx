@@ -1,67 +1,51 @@
 import { useCallback, useEffect } from 'react'
 
 import { formatDistance, formatNumber } from '@shared/format'
-import { zoneIndexAt } from '@shared/logic'
 
 import { sfx } from '../../audio/sfx'
 import { setRollHudElement } from '../../game/roll/hudLink'
 import { useGame } from '../../store/game'
-import { zones } from '../../game/worldLook'
 import Icon from '../Icon'
 import StrokeText from '../StrokeText'
 import { GRADIENTS, u } from './style'
 
 /**
- * While your phone falls: the depth in big numbers at the top, "-1,234 m", the name of the
- * floor it's smashing into under it, and down the right a tall depth bar with your phone
- * sliding down it and a BEST mark where your deepest drop got to. All written straight to
- * the DOM from the frame loop (see hudLink), never through React - and the whole counter
- * is contained, so those writes re-lay-out this box alone.
+ * Top centre while your ball flies: a rainbow bar of the lane's stages with your marker
+ * moving along it, "1,050 yd" under it and the stage's name. All three are written
+ * straight to the DOM from the frame loop (see hudLink), never through React - and the
+ * whole counter is contained, so those writes re-lay-out this box alone.
  */
-const DISTANCE_GRADIENT = 'linear-gradient(180deg, #ffffff 0%, #e0faff 45%, #9fd8ff 100%)'
-const BAR_HEIGHT = 560
+const RAINBOW_BAR = 'linear-gradient(90deg, #ff4a4a 0%, #ff9a1e 17%, #ffe23a 33%, #4be05a 50%, #2fd0ff 67%, #3a6bff 83%, #ff5fd2 100%)'
+const DISTANCE_GRADIENT = 'linear-gradient(180deg, #e0faff 0%, #7fe2ff 45%, #2f8ff2 100%)'
 
 function DistanceCounter() {
   // A callback ref: registered when the element mounts, cleared when it unmounts.
   const ref = useCallback((el) => setRollHudElement(el), [])
-  const roll = useGame((s) => s.roll)
-  const prevBest = roll?.prevBest || 0
-  const scale = Math.max(roll?.distance || 0, prevBest, 400) * 1.12
   return (
-    <div ref={ref} className="pointer-events-none absolute inset-0" style={{ contain: 'layout style' }}>
-      <div className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: u(40) }}>
-        <span className="pp-text" style={{ fontSize: u(116), lineHeight: 1 }}>
-          <span data-distance aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(22) }}>
-            0 m
-          </span>
-          <span data-distance className="pp-text-fill" style={{ backgroundImage: DISTANCE_GRADIENT, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-            0 m
-          </span>
-        </span>
-        <span className="pp-text" style={{ fontSize: u(70), marginTop: u(4) }}>
-          <span data-zone aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(14) }} />
-          <span data-zone data-zone-fill className="pp-text-fill" style={{ WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }} />
-        </span>
-      </div>
-      {/* The depth bar down the right: sky blue to the roof, then the hotel. */}
-      <div className="absolute" style={{ right: u(60), top: u(150), width: u(30), height: u(BAR_HEIGHT) }}>
-        <div className="absolute inset-0" style={{ border: `${u(5)} solid #111`, borderRadius: u(16), background: 'linear-gradient(180deg, #ffd21f 0%, #ffb21f 18%, #2a2f3a 22%, #1d1f22 100%)' }} />
-        {prevBest > 0 && (
-          <div className="absolute flex items-center" style={{ right: u(-6), top: `${Math.min(100, (prevBest / scale) * 100)}%`, transform: 'translateY(-50%)', gap: u(6) }}>
-            <span className="flex items-center justify-center" style={{ fontSize: u(28), padding: `${u(2)} ${u(12)}`, borderRadius: u(14), border: `${u(4)} solid #111`, background: GRADIENTS.goldButton, marginRight: u(4) }}>
-              <StrokeText stroke={u(6)}>BEST</StrokeText>
-            </span>
-            <span style={{ width: u(40), height: u(6), background: '#ffffff', border: `${u(2)} solid #111` }} />
-          </div>
-        )}
-        {/* The marker rides a track as tall as the bar, slid by a transform (a % of the
-            track's own height): moving it never needs a layout. */}
+    // Below the top-right buttons, so the bar never runs under them.
+    <div ref={ref} className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: u(96), width: u(1300), maxWidth: '86vw', contain: 'layout style' }}>
+      <div className="relative w-full" style={{ height: u(30) }}>
+        <div className="absolute inset-0" style={{ border: `${u(5)} solid #111`, borderRadius: u(16), background: RAINBOW_BAR }} />
+        {/* The marker rides a track as wide as the bar, slid by a transform (a % of the
+            track's own width): moving it never needs a layout. */}
         <div data-zone-marker className="absolute inset-0" style={{ willChange: 'transform' }}>
-          <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
-            <Icon name="tire" size={u(78)} />
+          <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <Icon name="tire" size={u(64)} />
           </div>
         </div>
       </div>
+      <span className="pp-text" style={{ fontSize: u(100), lineHeight: 1, marginTop: u(14) }}>
+        <span data-distance aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(20) }}>
+          0 yd
+        </span>
+        <span data-distance className="pp-text-fill" style={{ color: '#ffffff' }}>
+          0 yd
+        </span>
+      </span>
+      <span className="pp-text" style={{ fontSize: u(56), marginTop: u(6) }}>
+        <span data-zone aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(12) }} />
+        <span data-zone data-zone-fill className="pp-text-fill" style={{ WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }} />
+      </span>
     </div>
   )
 }
@@ -92,51 +76,33 @@ function FlyingTrophies() {
 }
 
 /**
- * Once the phone stops: "1,433 m" with the floor it smashed down to and "+60 Wins" under
- * it, and a big tilted NEW BEST! over them when it's your deepest drop yet (by how much).
+ * Once the ball stops, as in the reference: "1,516 m!" with "+1,516 Wins" under it, and
+ * a big tilted NEW BEST! over them when it's your furthest kick yet.
  */
 function RollResult({ result }) {
-  const floor = zones()[zoneIndexAt(result.distance)]
-  const gained = result.prevBest > 0 ? result.distance - result.prevBest : 0
   return (
     <>
       <FlyingTrophies key={`fly-${result.id}`} />
       {/* Centred by the pp-result animation's own transform. */}
-      <div key={result.id} className="pp-result pointer-events-none absolute left-1/2 top-[47%] flex flex-col items-center">
-        <div style={{ fontSize: u(118), transform: 'rotate(-4deg)' }}>
-          <StrokeText stroke={u(22)} gradient={GRADIENTS.gold}>
-            {formatDistance(result.distance)}
-          </StrokeText>
-        </div>
-        {floor && (
-          <div style={{ fontSize: u(60), transform: 'rotate(-4deg)' }}>
-            <StrokeText stroke={u(12)} gradient={DISTANCE_GRADIENT}>
-              {floor.name}
+      <div key={result.id} className="pp-result pointer-events-none absolute left-1/2 top-[44%] flex flex-col items-center">
+        {result.best && (
+          <div style={{ fontSize: u(120), transform: 'rotate(-8deg)', marginBottom: u(-10) }}>
+            <StrokeText stroke={u(22)} gradient={GRADIENTS.priceShort}>
+              NEW BEST!
             </StrokeText>
           </div>
         )}
-        <div className="flex items-center" style={{ gap: u(12), fontSize: u(84), transform: 'rotate(-4deg)' }}>
-          <Icon name="trophy" size={u(110)} />
-          <StrokeText stroke={u(16)} gradient={GRADIENTS.gold}>
-            +{formatNumber(result.wins + result.prize)}
+        <div style={{ fontSize: u(118), transform: 'rotate(-6deg)' }}>
+          <StrokeText stroke={u(22)} gradient={DISTANCE_GRADIENT}>
+            {formatDistance(result.distance)}!
           </StrokeText>
         </div>
-        {result.best && (
-          <div className="flex flex-col items-center" style={{ marginTop: u(10) }}>
-            <div style={{ fontSize: u(120), transform: 'rotate(-6deg)' }}>
-              <StrokeText stroke={u(22)} gradient={GRADIENTS.rainbow}>
-                NEW BEST!
-              </StrokeText>
-            </div>
-            {gained > 0 && (
-              <div style={{ fontSize: u(56) }}>
-                <StrokeText stroke={u(11)} gradient={GRADIENTS.gold}>
-                  {formatDistance(result.distance)} (+{formatDistance(gained)})
-                </StrokeText>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex items-center" style={{ gap: u(12), fontSize: u(84), transform: 'rotate(-6deg)' }}>
+          <Icon name="trophy" size={u(110)} />
+          <StrokeText stroke={u(16)} gradient={GRADIENTS.gold}>
+            +{formatNumber(result.wins + result.prize)} Wins
+          </StrokeText>
+        </div>
       </div>
     </>
   )
@@ -145,7 +111,7 @@ function RollResult({ result }) {
 /** How long a toast stays up. */
 const TOAST_MS = 3500
 
-/** A celebration banner across the middle: a new floor, an ad reward, a Gems purchase. */
+/** A celebration banner across the middle: a new zone, an ad reward, a Gems purchase. */
 function Toast() {
   const toast = useGame((s) => s.toast)
   useEffect(() => {
@@ -159,7 +125,7 @@ function Toast() {
   return (
     <div
       key={toast.id}
-      className="pp-result pointer-events-none absolute left-1/2 top-[22%] flex flex-col items-center text-center"
+      className="pp-result pointer-events-none absolute left-1/2 top-[16%] flex flex-col items-center text-center"
       style={{ fontSize: u(60), animationDuration: `${TOAST_MS}ms`, width: 'max-content', maxWidth: '92vw' }}
     >
       <StrokeText stroke={u(12)} gradient={GRADIENTS.gold} style={{ whiteSpace: 'normal' }}>
@@ -170,7 +136,7 @@ function Toast() {
 }
 
 export function RollOverlay() {
-  // The depth counter is for the fall; the result takes over once the phone stops.
+  // The distance counter is for the flight; the result takes over once it lands.
   const rolling = useGame((s) => Boolean(s.roll && !s.rollResult))
   const result = useGame((s) => s.rollResult)
   return (

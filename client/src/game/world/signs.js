@@ -10,17 +10,18 @@ import {
   Vector3,
 } from 'three'
 
-import { ROLL_ZONE, SHOP_SIGN, SHOP_SIGN_FACING } from '@shared/world'
+import { SHOP_SIGN, SHOP_SIGN_FACING, STAGE_TOWERS, THROW_STAGE } from '@shared/world'
 
 import { venueOf } from '../sceneStyle'
-import { DECAL_Y, DIGIT, DIRECTIONS, END_ZONE_TEXT, LOGO, yardNumbers } from './pitch'
-import { ARCH_SIGN } from './rollZone'
+import { DECAL_Y, DIRECTIONS, LOGO } from './pitch'
+import { STAGE_DECAL, TOWER_SIGN, towerSignAt } from './rollZone'
+import { ALTAR_SIGN, SHOP_BOARD } from './structures'
 
 const FONT = '"Fredoka One", "Arial Rounded MT Bold", sans-serif'
 
 const GOLD = ['#fffbd0', '#ffd21f', '#ff8a00']
-const NAVY = ['#5a6cb0', '#1a2a66', '#0a1232']
 const WHITE = ['#ffffff', '#ffffff', '#e6ecf5']
+const PURPLE = ['#ffffff', '#e2c8ff', '#b07aff']
 
 /**
  * Big chunky lettering painted into one rectangle `[rx, ry, rw, rh]` of the shared atlas,
@@ -72,7 +73,7 @@ function paintText(ctx, rect, text, { fill, edge, slant = 0.22, outline = '#1014
   ctx.restore()
 }
 
-/** White stencil lettering on the turf with an arrow either side pointing `arrow` (in the image). */
+/** White stencil lettering on the flagstones with an arrow either side pointing `arrow` (in the image). */
 function paintStencil(ctx, rect, text, arrow) {
   const [rx, ry, rw, rh] = rect
   const pad = rh * 0.95
@@ -124,9 +125,11 @@ function arcText(ctx, text, cx, cy, r, size, top) {
 }
 
 /**
- * The circular logo in the plaza: a rim, a ring with the venue's words over the top and
- * under the bottom between two stars, and in the middle a disc with a falling phone on it
- * - in the venue's colours and words (`logo`: SKY CITY, or PALM BEACH RESORT).
+ * The academy's round crest at the spawn: a gold rim, a ring in the academy's blue with
+ * the venue's name over the top and under the bottom between two gold stars, and in the
+ * middle a heater shield in front of two crossed swords, points up - in the venue's
+ * colours and words (`logo`: SWORD TOSS / LEGENDS, or DRAGONFIRE / PEAKS in basalt and
+ * orange). An original crest: no borrowed symbol.
  */
 function paintLogo(ctx, [rx, ry, size], logo) {
   const c = size / 2
@@ -143,8 +146,8 @@ function paintLogo(ctx, [rx, ry, size], logo) {
   circle(R * 0.94, logo.ring)
   circle(R * 0.63, '#ffffff')
   circle(R * 0.6, logo.inner)
-  arcText(ctx, logo.top, cx, cy, R * 0.78, size * 0.105, true)
-  arcText(ctx, logo.bottom, cx, cy, R * 0.78, size * 0.105, false)
+  arcText(ctx, logo.top, cx, cy, R * 0.78, size * 0.1, true)
+  arcText(ctx, logo.bottom, cx, cy, R * 0.78, size * 0.1, false)
   // Two gold stars on the ring, left and right.
   for (const side of [-1, 1]) {
     ctx.save()
@@ -160,61 +163,80 @@ function paintLogo(ctx, [rx, ry, size], logo) {
     ctx.fill()
     ctx.restore()
   }
-  // The emblem: a phone tipping over as it falls, its screen cracked, speed marks behind
-  // it (the same art as the game's icon, ui/icons.js).
+  // The emblem, in a 100-unit box: two crossed swords, points up, a shield over where they cross.
   ctx.save()
   const k = (size * 0.5) / 100
-  ctx.translate(cx - 50 * k, cy - 50 * k)
+  ctx.translate(cx, cy)
   ctx.scale(k, k)
-  ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  for (const [x0, y0, x1, y1] of [[8, 34, 22, 38], [6, 50, 20, 51], [10, 66, 23, 63]]) {
+  for (const angle of [-0.62, 0.62]) {
+    ctx.save()
+    ctx.rotate(angle)
+    // The blade from the guard up to its point, a fuller down it.
+    const blade = new Path2D()
+    blade.moveTo(-5, 22)
+    blade.lineTo(-5, -34)
+    blade.lineTo(0, -44)
+    blade.lineTo(5, -34)
+    blade.lineTo(5, 22)
+    blade.closePath()
+    ctx.lineWidth = 4
+    ctx.strokeStyle = '#1b1b1f'
+    ctx.stroke(blade)
+    const steel = ctx.createLinearGradient(-5, 0, 5, 0)
+    steel.addColorStop(0, '#ffffff')
+    steel.addColorStop(0.5, '#d6dee9')
+    steel.addColorStop(1, '#9aa7ba')
+    ctx.fillStyle = steel
+    ctx.fill(blade)
+    ctx.strokeStyle = '#8a97ab'
+    ctx.lineWidth = 1.6
     ctx.beginPath()
-    ctx.moveTo(x0, y0)
-    ctx.lineTo(x1, y1)
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 5
+    ctx.moveTo(0, 18)
+    ctx.lineTo(0, -32)
     ctx.stroke()
-  }
-  ctx.translate(52, 50)
-  ctx.rotate(-0.42)
-  ctx.translate(-52, -50)
-  const rounded = (x, y, w, h, r) => {
+    // Guard, grip and pommel in gold and leather.
+    ctx.lineWidth = 3.5
+    ctx.strokeStyle = '#1b1b1f'
+    ctx.fillStyle = logo.rim
+    ctx.fillRect(-15, 21, 30, 6)
+    ctx.strokeRect(-15, 21, 30, 6)
+    ctx.fillStyle = '#7a4a2a'
+    ctx.fillRect(-3.5, 27, 7, 13)
+    ctx.strokeRect(-3.5, 27, 7, 13)
+    ctx.fillStyle = logo.rim
     ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.arcTo(x + w, y, x + w, y + h, r)
-    ctx.arcTo(x + w, y + h, x, y + h, r)
-    ctx.arcTo(x, y + h, x, y, r)
-    ctx.arcTo(x, y, x + w, y, r)
-    ctx.closePath()
+    ctx.arc(0, 43, 4.6, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
   }
-  rounded(30, 10, 44, 80, 10)
-  ctx.fillStyle = '#2a4fd8'
-  ctx.fill()
-  ctx.lineWidth = 6
+  // The shield: a heater shape in the ring's colour, a gold border, a gold chevron.
+  const shield = new Path2D()
+  shield.moveTo(-17, -6)
+  shield.lineTo(17, -6)
+  shield.lineTo(17, 8)
+  shield.quadraticCurveTo(15, 24, 0, 32)
+  shield.quadraticCurveTo(-15, 24, -17, 8)
+  shield.closePath()
+  ctx.lineWidth = 9
   ctx.strokeStyle = '#1b1b1f'
-  ctx.stroke()
-  rounded(36, 18, 32, 62, 4)
-  const glass = ctx.createLinearGradient(0, 18, 0, 80)
-  glass.addColorStop(0, '#bff6ff')
-  glass.addColorStop(0.5, '#5fd6ff')
-  glass.addColorStop(1, '#3a6bff')
-  ctx.fillStyle = glass
-  ctx.fill()
-  ctx.fillStyle = '#1b1b1f'
-  ctx.fillRect(45, 13, 14, 3.5)
-  ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = 2.6
+  ctx.stroke(shield)
+  ctx.lineWidth = 5
+  ctx.strokeStyle = logo.rim
+  ctx.stroke(shield)
+  ctx.fillStyle = logo.ring
+  ctx.fill(shield)
   ctx.beginPath()
-  ctx.moveTo(58, 30)
-  ctx.lineTo(52, 42)
-  ctx.lineTo(60, 48)
-  ctx.lineTo(50, 62)
-  ctx.moveTo(52, 42)
-  ctx.lineTo(42, 46)
-  ctx.moveTo(60, 48)
-  ctx.lineTo(66, 58)
-  ctx.stroke()
+  ctx.moveTo(-11, 14)
+  ctx.lineTo(0, 4)
+  ctx.lineTo(11, 14)
+  ctx.lineTo(11, 20)
+  ctx.lineTo(0, 10)
+  ctx.lineTo(-11, 20)
+  ctx.closePath()
+  ctx.fillStyle = logo.rim
+  ctx.fill()
   ctx.restore()
 }
 
@@ -227,27 +249,93 @@ const _at = new Vector3()
 const ROUND_SIDES = 32
 
 /**
+ * The throw stage's deck painting, seen from above: an oval rune ring in gold round a big
+ * arrow pointing up the cell (north, down the road), runes ticked round the ring between
+ * two lines. Transparent everywhere else, so the stage's stones show through.
+ */
+function paintStageArrow(ctx, [rx, ry, rw, rh], gold, rune) {
+  const cx = rx + rw / 2
+  const cy = ry + rh / 2
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(rx, ry, rw, rh)
+  ctx.clip()
+  ctx.lineJoin = 'round'
+  // The rings.
+  const ax = rw * 0.47
+  const ay = rh * 0.45
+  ctx.globalAlpha = 0.9
+  ctx.strokeStyle = gold
+  ctx.lineWidth = rh * 0.03
+  ctx.beginPath()
+  ctx.ellipse(cx, cy, ax, ay, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.lineWidth = rh * 0.014
+  ctx.beginPath()
+  ctx.ellipse(cx, cy, ax * 0.88, ay * 0.8, 0, 0, Math.PI * 2)
+  ctx.stroke()
+  // Runes between them: little ticks and diamonds, alternating.
+  ctx.fillStyle = rune
+  ctx.strokeStyle = rune
+  ctx.lineWidth = rh * 0.016
+  for (let k = 0; k < 28; k += 1) {
+    const a = (k / 28) * Math.PI * 2
+    const x = cx + Math.cos(a) * ax * 0.94
+    const y = cy + Math.sin(a) * ay * 0.9
+    if (k % 2) {
+      ctx.beginPath()
+      ctx.moveTo(x, y - rh * 0.025)
+      ctx.lineTo(x + rh * 0.02, y)
+      ctx.lineTo(x, y + rh * 0.025)
+      ctx.lineTo(x - rh * 0.02, y)
+      ctx.closePath()
+      ctx.fill()
+    } else {
+      ctx.beginPath()
+      ctx.moveTo(x - Math.sin(a) * rh * 0.02, y + Math.cos(a) * rh * 0.02)
+      ctx.lineTo(x + Math.sin(a) * rh * 0.02, y - Math.cos(a) * rh * 0.02)
+      ctx.stroke()
+    }
+  }
+  // The arrow, up the cell: its head and shaft, outlined.
+  const arrow = new Path2D()
+  arrow.moveTo(cx, ry + rh * 0.13)
+  arrow.lineTo(cx + rw * 0.13, ry + rh * 0.47)
+  arrow.lineTo(cx + rw * 0.045, ry + rh * 0.47)
+  arrow.lineTo(cx + rw * 0.045, ry + rh * 0.86)
+  arrow.lineTo(cx - rw * 0.045, ry + rh * 0.86)
+  arrow.lineTo(cx - rw * 0.045, ry + rh * 0.47)
+  arrow.lineTo(cx - rw * 0.13, ry + rh * 0.47)
+  arrow.closePath()
+  ctx.globalAlpha = 0.95
+  ctx.lineWidth = rh * 0.03
+  ctx.strokeStyle = '#2a1a06'
+  ctx.stroke(arrow)
+  const fill = ctx.createLinearGradient(0, ry + rh * 0.13, 0, ry + rh * 0.86)
+  fill.addColorStop(0, '#fffbd0')
+  fill.addColorStop(0.5, gold)
+  fill.addColorStop(1, '#ff9c00')
+  ctx.fillStyle = fill
+  ctx.fill(arrow)
+  ctx.restore()
+}
+
+/**
  * The atlas's cells for venue `v`, as fractions of its size: [x, y, w, h], and how each is
- * painted. The logo takes the top-left quarter; the upright signs and the six digits fill
- * the top-right; the end zones' lettering and the four direction stencils run below.
+ * painted. The logo takes the top-left quarter; the upright signs fill the top-right; the
+ * direction stencils run below, two to a row; the stage's painting fills the bottom right.
  */
 const cellsFor = (v) => ({
   logo: { rect: [0, 0, 0.5, 0.5], paint: (ctx, r) => paintLogo(ctx, r, v.logo) },
-  arch: { rect: [0.5, 0, 0.5, 0.15], paint: (ctx, r) => paintText(ctx, r, 'SMASH THE HOTEL', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
-  shop: { rect: [0.5, 0.15, 0.5, 0.13], paint: (ctx, r) => paintText(ctx, r, 'PHONE SHOP', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
-  zone: { rect: [0.5, 0.28, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'DROP ZONE', { fill: NAVY, edge: '#a08a10' }) },
-  ...Object.fromEntries(
-    Array.from({ length: 6 }, (_, d) => [
-      `digit${d}`,
-      { rect: [0.5 + (d * 0.5) / 6, 0.4, 0.5 / 6, 0.1], paint: (ctx, r) => paintText(ctx, r, String(d), { fill: WHITE, edge: '#9fb0c8', slant: 0, outline: '#0d2a14' }) },
-    ]),
-  ),
-  endSouth: { rect: [0, 0.5, 1, 0.14], paint: (ctx, r) => paintText(ctx, r, END_ZONE_TEXT[0].text, { fill: GOLD, edge: '#b45309', slant: 0.1 }) },
-  endNorth: { rect: [0, 0.64, 1, 0.12], paint: (ctx, r) => paintText(ctx, r, v.endNorth, { fill: WHITE, edge: '#9fb0c8', slant: 0.1 }) },
+  arch: { rect: [0.5, 0, 0.5, 0.14], paint: (ctx, r) => paintText(ctx, r, 'THROW STAGE', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
+  shop: { rect: [0.5, 0.14, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'SWORD SHOP', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
+  zone: { rect: [0.5, 0.26, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'STAND ON THE STAGE', { fill: WHITE, edge: '#9fb0c8', slant: 0.08 }) },
+  stage: { rect: [0.5, 0.74, 0.5, 0.26], paint: (ctx, r) => paintStageArrow(ctx, r, '#ffd84a', v.altar?.rune ?? '#a77bff') },
+  ballShop: { rect: [0.5, 0.38, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'ENCHANTS', { fill: PURPLE, edge: '#4a1a8a', slant: 0.14 }) },
   ...Object.fromEntries(
     DIRECTIONS.map((d, i) => [
-      `dir${i}`,
-      { rect: [(i % 2) * 0.5, 0.76 + Math.floor(i / 2) * 0.11, 0.5, 0.11], paint: (ctx, r) => paintStencil(ctx, r, d.text, d.arrow) },
+      'dir' + i,
+      { rect: [(i % 2) * 0.5, 0.5 + Math.floor(i / 2) * 0.12, 0.5, 0.12], paint: (ctx, r) => paintStencil(ctx, r, d.text, d.arrow) },
     ]),
   ),
 })
@@ -259,42 +347,45 @@ const cellsFor = (v) => ({
  * higher - at least 3 cm over whatever they're on.
  */
 function quadList() {
-  const zoneWidth = 7.5
-  const quads = [
-    { cell: 'arch', width: ARCH_SIGN.width - 0.3, at: [0, ARCH_SIGN.y, ARCH_SIGN.faceZ + 0.04], yaw: 0, flat: false },
+  return [
+    // THROW STAGE on each flag tower's board, facing spawn (south).
+    ...STAGE_TOWERS.map((t) => {
+      const at = towerSignAt(t)
+      return { cell: 'arch', width: TOWER_SIGN.width - 0.3, at: [at.x, at.y, at.z], yaw: 0, flat: false }
+    }),
+    // The stage's deck painting: an arrow down the road in a rune ring.
+    { cell: 'stage', width: STAGE_DECAL.width, at: [STAGE_DECAL.x, THROW_STAGE.height + 0.03, STAGE_DECAL.z], yaw: 0, flat: true },
     {
       cell: 'shop',
-      width: SHOP_SIGN.maxZ - SHOP_SIGN.minZ - 3,
-      // On the sign's face (0.4 plaza-side of its centre line), turned to the plaza.
-      at: [SHOP_SIGN.x + 0.44 * SHOP_SIGN_FACING, SHOP_SIGN.top - 4.1, (SHOP_SIGN.minZ + SHOP_SIGN.maxZ) / 2],
+      // On the board crowning the Sword Wall (its face 0.4 plaza-side of its centre line),
+      // turned to the plaza, as tall as the board's panel allows.
+      width: Math.min(SHOP_SIGN.maxZ - SHOP_SIGN.minZ - 3, 15),
+      at: [SHOP_SIGN.x + 0.44 * SHOP_SIGN_FACING, SHOP_BOARD.midY, (SHOP_SIGN.minZ + SHOP_SIGN.maxZ) / 2],
       yaw: (SHOP_SIGN_FACING * Math.PI) / 2,
       flat: false,
     },
-    // Over the drop zone's yellow strip (top 0.10) and its navy chevrons (top 0.14),
-    // either side of the middle.
-    { cell: 'zone', width: zoneWidth, at: [-8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
-    { cell: 'zone', width: zoneWidth, at: [8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
-    // The logo is drawn as a round disc, not a square, so the yard lines cut back round it
-    // never run under its (clear) corners.
+    // On the flagstones in front of the stage's steps, facing you as you walk up from spawn.
+    { cell: 'zone', width: 7, at: [0, DECAL_Y, THROW_STAGE.maxZ + 3.4], yaw: 0, flat: true },
+    // On the Enchant Altar's sign board, facing the plaza (west).
+    { cell: 'ballShop', width: ALTAR_SIGN.width - 0.4, at: [ALTAR_SIGN.x - 0.07, ALTAR_SIGN.y, ALTAR_SIGN.z], yaw: -Math.PI / 2, flat: false },
+    // The logo is drawn as a round disc, not a square, so nothing under it shows at its corners.
     { cell: 'logo', width: LOGO.radius * 2, at: [LOGO.x, DECAL_Y, LOGO.z], yaw: 0, flat: true, round: true },
-    ...DIRECTIONS.map((d, i) => ({ cell: `dir${i}`, width: d.width, at: [d.x, DECAL_Y, d.z], yaw: d.yaw, flat: true })),
-    ...yardNumbers().map((n) => ({ cell: `digit${n.digit}`, width: DIGIT.width, at: [n.x, DECAL_Y, n.z], yaw: 0, flat: true })),
+    ...DIRECTIONS.map((d, i) => ({ cell: 'dir' + i, width: d.width, at: [d.x, DECAL_Y, d.z], yaw: d.yaw, flat: true })),
   ]
-  return quads
 }
 
 /**
- * The painted signs, drawn once the font has loaded: "KICK IT" on the start arch, "BALL
- * SHOP" on the ball shop's sign, "KICK ZONE" across the strip at the field's mouth, and
- * the lobby field's markings - the BACKYARD STADIUM logo at midfield, the yard numbers,
- * the end zones' lettering and the direction stencils. All of them share ONE square atlas
+ * The painted signs, drawn once the font has loaded: "THROW STAGE" on the flag towers'
+ * boards, "SWORD SHOP" on the Sword Wall's crown, "ENCHANTS" on the Enchant Altar's board, the
+ * arrow and runes on the stage's deck, and on the ground "STAND ON THE STAGE" before its
+ * steps, the academy's crest at the spawn and the direction stencils. All of them share ONE square atlas
  * texture (at most the preset's texture size) and are merged into ONE mesh: a single draw
  * call. Flat ones lie 3 cm or more over what's under them, and the material is pulled
  * towards the camera in depth (polygon offset, factor and units both, so it holds even
  * looking straight down) - no z-fighting.
  *
  * @param {number} maxTexture texture size cap for the preset
- * @param {number} [world] the world whose venue it's lettered for (its logo and end zone)
+ * @param {number} [world] the world whose venue it's lettered for (its crest)
  * @returns {Promise<Array<{ geometry, material, texture, position: number[], rotation: number[] }>>}
  */
 export async function createPaintedSigns(maxTexture, world = 0) {
